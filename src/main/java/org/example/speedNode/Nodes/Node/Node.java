@@ -1,4 +1,4 @@
-package org.example.speedNode.Node;
+package org.example.speedNode.Nodes.Node;
 
 public class Node {
 
