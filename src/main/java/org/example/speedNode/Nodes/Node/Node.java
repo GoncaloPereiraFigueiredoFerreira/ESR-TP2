@@ -1,18 +1,34 @@
 package org.example.speedNode.Nodes.Node;
 import org.example.speedNode.TaggedConnection.Frame;
 import org.example.speedNode.TaggedConnection.TaggedConnection;
-
+import org.example.speedNode.Nodes.serialize;
 import java.net.*;
 import java.io.*;
-public class Node {
+import java.util.List;
 
-    public static void main(String argv[]) throws IOException{
-        Socket s = new Socket("localhost",12345);
-        TaggedConnection tagcon = new TaggedConnection(s);
+public class Node implements Runnable{
+    private Socket s;
+    private final int bootstrapPort = 12345;
+    private final String bootstrap ;
+    TaggedConnection tc;
+
+    public Node(String server) throws IOException {
+        this.bootstrap= server;
+        this.s = new Socket(this.bootstrap,this.bootstrapPort);
+        tc = new TaggedConnection(this.s);
+    }
+
+    public void run(){
+
         byte[] b={};
-        tagcon.send(0,1,b);
+        try {
+            tc.send(0,1,b);
+            Frame frame = tc.receive();
+            List<String> ips= serialize.deserialize(frame.getData());
 
-        Frame frame = tagcon.receive()
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
     }
 
