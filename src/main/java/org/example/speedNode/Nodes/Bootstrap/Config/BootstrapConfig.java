@@ -7,7 +7,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 public class BootstrapConfig {
     private List<NodeInfo> nodes;
@@ -22,10 +25,24 @@ public class BootstrapConfig {
         this.nodes = nodes;
     }
 
-    public static BootstrapConfig readFile(String filename) throws FileNotFoundException {
+    public static BootstrapConfig readConfigFromFile(String filename) throws FileNotFoundException {
         InputStream inputStream = new FileInputStream(new File(filename));
         Yaml yaml = new Yaml(new Constructor(BootstrapConfig.class));
         return yaml.load(inputStream);
+    }
+
+    public static Map<String, List<String>> getNodesMapFromFile (String filename) throws FileNotFoundException {
+        BootstrapConfig bootstrapConfig = readConfigFromFile(filename);
+        var nodes = bootstrapConfig.getNodes();
+        if(nodes == null)
+            return null;
+
+        Map<String,List<String>> nodesMap = new HashMap<>();
+        nodes.stream().filter(Objects::nonNull).forEach(nodeInfo -> {
+            nodesMap.put(nodeInfo.getIp(), nodeInfo.getVizinhos());
+        });
+
+        return nodesMap;
     }
 
     @Override
