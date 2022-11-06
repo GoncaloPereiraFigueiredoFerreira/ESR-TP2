@@ -6,8 +6,10 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Bootstrap implements Runnable{
@@ -15,9 +17,14 @@ public class Bootstrap implements Runnable{
     private final int ServerPort = 12345;
     private int soTimeout = 0; //ServerSocket Timeout
     private int socketSoTimeout = 0; //Socket Timeout - O means infinite
-
     private Map<String, List<String>> nodesMap;
     private AtomicBoolean closeServer = new AtomicBoolean(false); //Modified by thread handling a command line
+
+
+    // TODO - Update implementation when possible
+    // For the first implementation which requires all nodes to be on to start the flood
+    private Set<String> contactedNodes = new HashSet<>();
+
 
     public Bootstrap(String Bootstrap_config_filename) throws FileNotFoundException {
         nodesMap = BootstrapConfig.getNodesMapFromFile(Bootstrap_config_filename);
@@ -37,6 +44,10 @@ public class Bootstrap implements Runnable{
                     //TODO - see how to wake threads so they can check the closeServer bool and end on command
                     try { new Thread(new BootstrapWorker(closeServer, s, nodesMap)).start(); }
                     catch (IOException ignored){}
+
+                    // TODO - Update implementation when possible
+                    // For the first implementation which requires all nodes to be on to start the flood.
+                    contactedNodes.add(s.getInetAddress().getHostAddress());
 
                 } catch (IOException e) {
                     throw new RuntimeException(e);

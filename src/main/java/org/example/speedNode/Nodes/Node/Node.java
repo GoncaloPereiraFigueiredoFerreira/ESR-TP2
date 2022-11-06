@@ -1,7 +1,7 @@
 package org.example.speedNode.Nodes.Node;
 import org.example.speedNode.TaggedConnection.Frame;
 import org.example.speedNode.TaggedConnection.TaggedConnection;
-import org.example.speedNode.Nodes.serialize;
+import org.example.speedNode.Nodes.Serialize;
 import java.net.*;
 import java.io.*;
 import java.util.List;
@@ -24,13 +24,20 @@ public class Node implements Runnable{
         try {
             tc.send(0,1,b);
             Frame frame = tc.receive();
-            List<String> ips= serialize.deserialize(frame.getData());
-
+            List<String> ips= Serialize.deserialize(frame.getData());
+            System.out.println(ips); //TODO - remover print
         } catch (IOException e) {
             e.printStackTrace();
         }
 
     }
 
-
+    public static void main(String[] args) {
+        try {
+            Node node = new Node(args[1]);
+            node.run();
+        } catch (IOException e) {
+            System.out.println("Deu m****");
+        }
+    }
 }

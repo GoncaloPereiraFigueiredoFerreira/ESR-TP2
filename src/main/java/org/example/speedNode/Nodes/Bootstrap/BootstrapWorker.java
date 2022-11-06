@@ -1,6 +1,6 @@
 package org.example.speedNode.Nodes.Bootstrap;
 
-import org.example.speedNode.Nodes.serialize;
+import org.example.speedNode.Nodes.Serialize;
 import org.example.speedNode.TaggedConnection.Frame;
 import org.example.speedNode.TaggedConnection.TaggedConnection;
 
@@ -37,7 +37,7 @@ public class BootstrapWorker implements Runnable{
             // Mais tarde pode ser um switch quando tiver mais opcoes
             if(f.getTag() != 1){
                 List<String> vizinhos = nodesMap.get(socket.getInetAddress().getHostAddress());
-                connection.send(0,1, serialize.serialize(vizinhos));
+                connection.send(0,1, Serialize.serialize(vizinhos));
             }
 
             socket.close();

@@ -5,7 +5,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class serialize {
+public class Serialize {
 
 
     public static byte[] serialize (List<String> ips) throws IOException{

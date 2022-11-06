@@ -35,7 +35,7 @@ public class AppTest
     public void testApp()
     {
         try {
-            BootstrapConfig.readFile("bootstrap_test1.yaml");
+            //BootstrapConfig.readFile("bootstrap_test1.yaml");
             //BootStrapConfigReader.readFile("bootstrap.yaml");
         }
         catch (Exception e){

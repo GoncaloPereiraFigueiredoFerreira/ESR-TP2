@@ -26,7 +26,7 @@ public class BootstrapConfig {
     }
 
     public static BootstrapConfig readConfigFromFile(String filename) throws FileNotFoundException {
-        InputStream inputStream = new FileInputStream(new File(filename));
+        InputStream inputStream = new FileInputStream(filename);
         Yaml yaml = new Yaml(new Constructor(BootstrapConfig.class));
         return yaml.load(inputStream);
     }
