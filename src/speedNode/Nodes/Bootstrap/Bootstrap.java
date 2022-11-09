@@ -19,42 +19,39 @@ public class Bootstrap implements Runnable{
     private final int ServerPort = 12345;
     private int soTimeout = 0; //ServerSocket Timeout
     private int socketSoTimeout = 0; //Socket Timeout - O means infinite
-    private Map<String, List<String>> nodesMap;
-    private AtomicBoolean closeServer = new AtomicBoolean(false); //Modified by thread handling a command line
 
-
-    // TODO - Update implementation when possible
-    // For the first implementation which requires all nodes to be on to start the flood
-    private Set<String> contactedNodes = new HashSet<>();
-    public boolean isEveryNodeReady(){
-        return contactedNodes.size() == nodesMap.size();
-    }
+    private BootstrapSharedInfo sharedInfo;
 
     public Bootstrap(String Bootstrap_config_filename) throws Exception {
-        nodesMap = readConfigFile(Bootstrap_config_filename);
+        sharedInfo = new BootstrapSharedInfo(readConfigFile(Bootstrap_config_filename));
     }
 
 
     // *************** Run Bootstrap ***************
     @Override
     public void run() {
+        Set<Thread> threads = new HashSet<>();
         try {
             //Start Server Socket
             ss = new ServerSocket(ServerPort);
             ss.setSoTimeout(soTimeout);
 
-            while (!closeServer.get()) {
+            while (!sharedInfo.isServerClosed()) {
                 try {
                     Socket s = ss.accept();
                     s.setSoTimeout(socketSoTimeout);
 
                     //TODO - see how to wake threads so they can check the closeServer bool and end on command
-                    try { new Thread(new BootstrapWorker(closeServer, s, nodesMap)).start(); }
+                    try {
+                        Thread t = new Thread(new BootstrapWorker(sharedInfo, s));
+                        t.start();
+                        threads.add(t);
+                    }
                     catch (IOException ignored){}
 
                     // TODO - Update implementation when possible
                     // For the first implementation which requires all nodes to be on to start the flood.
-                    contactedNodes.add(s.getInetAddress().getHostAddress());
+                    sharedInfo.addContactedNode(s.getInetAddress().getHostAddress());
 
                 } catch (IOException e) {
                     throw new RuntimeException(e);
@@ -62,7 +59,11 @@ public class Bootstrap implements Runnable{
             }
 
             ss.close();
-            closeServer.set(true);
+            sharedInfo.setServerClosed(true);
+            for(Thread t : threads) {
+                try { t.join(); }
+                catch (InterruptedException ie){ ie.printStackTrace(); }
+            }
         }catch (IOException ioe){
             System.out.println("Could not initialize server socket!");
         }
@@ -75,15 +76,15 @@ public class Bootstrap implements Runnable{
 
         for(int i = 0; i < args.size(); i++){
             switch (args.get(i)){
-                case "--filename":
+                case "-filename":
                     if(i + 1 < args.size()){
                         filename = args.get(i+1);
                         i++;
                     }
                     break;
 
-                case "--help":
-                    System.out.println("Use the flag '--filename' to specify the path to the .yaml config file.");
+                case "-help":
+                    System.out.println("Use the flag '-filename' to specify the path to the .xml config file.");
             }
         }
 

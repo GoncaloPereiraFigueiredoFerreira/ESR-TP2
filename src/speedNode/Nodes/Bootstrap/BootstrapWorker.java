@@ -6,29 +6,26 @@ import speedNode.TaggedConnection.TaggedConnection;
 
 import java.io.IOException;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class BootstrapWorker implements Runnable{
-    AtomicBoolean closeServer;
+    BootstrapSharedInfo sharedInfo;
     Socket socket;
     TaggedConnection connection;
-    Map<String,List<String>> nodesMap;
 
     /*
         | TAG | DESCRIPTION
         |-----+------------------
-        |  1  |  Request neighbours
+        |  1  | Response to the request "Get Neighbours"
+        |-----+-----------------
+        |  2  | Indicates that can start flooding
     */
 
-    public BootstrapWorker(AtomicBoolean closeServer, Socket socket, Map<String,List<String>> nodesMap) throws IOException {
-        this.closeServer = closeServer;
+    public BootstrapWorker(BootstrapSharedInfo sharedInfo, Socket socket) throws IOException {
+        this.sharedInfo = sharedInfo;
         this.socket = socket;
         this.connection = new TaggedConnection(socket);
-        this.nodesMap = nodesMap;
     }
 
     @Override
@@ -40,11 +37,16 @@ public class BootstrapWorker implements Runnable{
             // Mais tarde pode ser um switch quando tiver mais opcoes
             if(frame.getTag() == 1){
                 System.out.println(socket.getInetAddress().getHostAddress()); //TODO - tirar print
-                List<String> vizinhos = nodesMap.get(socket.getInetAddress().getHostAddress());
-                if(vizinhos == null)
-                    vizinhos = new ArrayList<>();
-                connection.send(0,1, Serialize.serialize(vizinhos));
+                List<String> vizinhos = sharedInfo.getNeighbours(socket.getInetAddress().getHostAddress());
+                connection.send(0,1, Serialize.serializeListOfStrings(vizinhos));
                 System.out.println("Sent request with tag 1");
+
+                //If the node is a server, then awaits to send message granting permission to flood
+                boolean isServer = Serialize.deserializeBoolean(frame.getData());
+                if(isServer){
+                    sharedInfo.canStartFlood();
+                    connection.send(0, 2, new byte[]{});
+                }
             }
 
             socket.close();
