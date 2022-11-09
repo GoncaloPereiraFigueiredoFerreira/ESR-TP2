@@ -1,5 +1,7 @@
 package speedNode.Nodes.Tables;
 
+import speedNode.Utils.Tuple;
+
 public interface IRoutingTable {
     /**
      * Adds a new path to a server
@@ -32,6 +34,10 @@ public interface IRoutingTable {
     boolean updateActiveState(String ServerIp,String Provider, boolean activate);
 
 
+    boolean isRouteActive(String ServerIp, String Provider);
+
+
+    Tuple<Integer,Float> getMetrics(String ServerIp, String Provider);
 
 
 }

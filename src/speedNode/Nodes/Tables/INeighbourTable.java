@@ -41,10 +41,10 @@ public interface INeighbourTable {
     /**
      * Updates the table to connect the current node to a neighbour
      * @param ip Ip of neighbour
-     * @param activate Flag to which the connection state will be set to
+     * @param connected Flag to which the connection state will be set to
      * @return Returns true if the operation was sucessful, or false otherwise
      */
-    boolean updateConnectionNeighbour(String ip,boolean activate);
+    boolean updateConnectionNeighbour(String ip,boolean connected);
 
     /**
      * Updates the table on the state
