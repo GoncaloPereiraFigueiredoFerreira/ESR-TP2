@@ -18,6 +18,9 @@ public class RoutingTable implements IRoutingTable{
     private final ReadWriteLock readWriteLockActive = new ReentrantReadWriteLock();
     private final ReadWriteLock readWriteLockProviders = new ReentrantReadWriteLock();
 
+    public RoutingTable(){
+
+    }
 
     @Override
     public boolean addServerPath(String ServerIp, String Provider, int Jumps, float Time, boolean active) {

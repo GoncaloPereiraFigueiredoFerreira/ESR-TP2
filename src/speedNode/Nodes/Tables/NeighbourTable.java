@@ -12,6 +12,9 @@ public class NeighbourTable implements INeighbourTable{
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
     private final HashMap<String, Tuple<Boolean,Boolean>> Neighbours = new HashMap<>();
 
+    public NeighbourTable(){
+
+    }
 
     @Override
     public boolean addNeighbour(String ip) {

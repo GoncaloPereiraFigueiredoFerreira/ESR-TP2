@@ -12,6 +12,10 @@ public class ClientTable implements IClientTable{
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
 
+    public ClientTable(){
+
+    }
+
     @Override
     public boolean addNewClient(String Ip) {
         try{
