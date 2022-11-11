@@ -8,13 +8,15 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class ClientTable implements IClientTable{
+    /**
+     * Table that contains the columns:
+     *                 IP address of client     |        Type of client (either "Server" or "Client")
+     */
     private final HashMap<String,String> ClientTable = new HashMap<>();
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
 
-    public ClientTable(){
-
-    }
+    public ClientTable(){}
 
     @Override
     public boolean addNewClient(String Ip) {

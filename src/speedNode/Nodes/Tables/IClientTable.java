@@ -4,6 +4,14 @@ import java.util.List;
 
 public interface IClientTable {
     /**
+     * Table that contains the columns:
+     *                 IP address of client     |        Type of client (either "Server" or "Client")
+     *
+     */
+
+
+
+    /**
      * Adds a new client to the client table
      * @param Ip Ip of the client
      * @return Returns true if the operation was concluded successfully

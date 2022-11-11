@@ -2,16 +2,23 @@ package speedNode.Nodes.Tables;
 
 import speedNode.Utils.Tuple;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class NeighbourTable implements INeighbourTable{
-    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+    /**
+     * Table that contains the columns:
+     *
+     *     IP of the neighbour    |   Flag: Is it active      |   Flag: Does it want the stream
+     *
+     */
     private final HashMap<String, Tuple<Boolean,Boolean>> Neighbours = new HashMap<>();
-
+    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
     public NeighbourTable(){
 
     }
@@ -111,4 +118,21 @@ public class NeighbourTable implements INeighbourTable{
             readWriteLock.writeLock().unlock();
         }
     }
+
+    @Override
+    public List<String> getConnectedNeighbours(){
+        ArrayList<String> lst = new ArrayList<>();
+        try {
+            readWriteLock.readLock().lock();
+        for (Map.Entry<String,Tuple<Boolean,Boolean>> entry: this.Neighbours.entrySet() ){
+            if (entry.getValue().snd == Boolean.TRUE) lst.add(entry.getKey());
+        }
+        return lst;
+        }finally {
+            readWriteLock.readLock().unlock();
+        }
+    }
+
+
+
 }

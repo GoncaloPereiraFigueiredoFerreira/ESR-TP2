@@ -3,6 +3,15 @@ package speedNode.Nodes.Tables;
 import speedNode.Utils.Tuple;
 
 public interface IRoutingTable {
+
+    /**
+     * Table that contains the columns:
+     *
+     *     IP of the server | IP of the Providing Neighbour | Nº Jumps till server |   Time till Server   |  Flag : Is route active
+     *
+     */
+
+
     /**
      * Adds a new path to a server
      * @param ServerIp The ip for the streaming server

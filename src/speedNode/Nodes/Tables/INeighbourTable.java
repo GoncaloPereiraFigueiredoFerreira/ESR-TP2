@@ -3,6 +3,15 @@ package speedNode.Nodes.Tables;
 import java.util.List;
 
 public interface INeighbourTable {
+
+    /**
+     * Table that contains the columns:
+     *
+     *     IP of the neighbour    |   Flag: Is it active      |   Flag: Does it want the stream
+     *
+     */
+
+
     /**
      * Adds a new neighbour to the neighbour list. The neighbour will be considered inactive and not connected.
      * @param ip IP of the new neighbour
@@ -53,5 +62,12 @@ public interface INeighbourTable {
      * @return Returns true if the operation was sucessful, or false otherwise
      */
     boolean updateActiveState(String ip,boolean activate);
+
+
+    /**
+     * Returns the list of neighbours that wish to receive the stream
+     * @return Returns the list of neighbours that wish to receive the stream
+     */
+    List<String> getConnectedNeighbours();
 
 }

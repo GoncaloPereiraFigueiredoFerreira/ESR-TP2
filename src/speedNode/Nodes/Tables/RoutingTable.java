@@ -10,6 +10,12 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class RoutingTable implements IRoutingTable{
+    /**
+     * Table that contains the columns:
+     *
+     *     IP of the server | IP of the Providing Neighbour | Nº Jumps till server |   Time till Server   |  Flag : Is route active
+     *
+     */
     private final HashMap<Tuple<String,String>, Tuple<Integer,Float>> metricsTable = new HashMap<>();
     private final HashMap<Tuple<String,String>, Boolean> activeRoute = new HashMap<>();
     private final HashMap<String, List<String>> providers = new HashMap<>();
