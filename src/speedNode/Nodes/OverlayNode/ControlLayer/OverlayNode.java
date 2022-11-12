@@ -1,16 +1,12 @@
-package speedNode.Nodes.OverlayNode;
+package speedNode.Nodes.OverlayNode.ControlLayer;
 
-import speedNode.Nodes.Serialize;
 import speedNode.Nodes.Tables.*;
-import speedNode.TaggedConnection.Frame;
 import speedNode.TaggedConnection.TaggedConnection;
 
-import java.io.IOException;
-import java.net.Socket;
 import java.util.List;
 
 public class OverlayNode implements Runnable{
-    private Socket s;
+    private final String bindAddress;
     private final String bootstrapIP;
     TaggedConnection tc;
     private final boolean server;
@@ -20,7 +16,8 @@ public class OverlayNode implements Runnable{
     private IRoutingTable routingTable;
     private IClientTable clientTable;
 
-    public OverlayNode(String bootstrapIP,boolean server,boolean client) {
+    public OverlayNode(String bindAddress, String bootstrapIP,boolean server,boolean client) {
+        this.bindAddress = bindAddress;
         this.server= server;
         this.bootstrapIP = bootstrapIP;
         this.neighbourTable= new NeighbourTable();
@@ -29,11 +26,10 @@ public class OverlayNode implements Runnable{
     }
 
 
-
     public void run(){
 
 
-        ControlWorker control_node= new ControlWorker(this.bootstrapIP,this.server,this.neighbourTable,this.routingTable,this.clientTable);
+        ControlWorker control_node= new ControlWorker(this.bindAddress, this.bootstrapIP, this.neighbourTable, this.routingTable, this.clientTable);
         control_node.run();
 
 

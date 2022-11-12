@@ -1,7 +1,7 @@
 package speedNode;
 
 import speedNode.Nodes.Bootstrap.Bootstrap;
-import speedNode.Nodes.OverlayNode.OverlayNode;
+import speedNode.Nodes.OverlayNode.ControlLayer.OverlayNode;
 
 import java.util.*;
 

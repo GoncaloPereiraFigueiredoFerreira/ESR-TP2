@@ -68,5 +68,12 @@ public class TaggedConnection implements AutoCloseable {
         socket.shutdownOutput();
         socket.close();
     }
+
+    public String getHost() {
+        if(socket != null)
+            return socket.getInetAddress().getHostAddress();
+        else
+            return null;
+    }
 }
 
