@@ -10,7 +10,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
@@ -36,7 +35,7 @@ public class ControlWorker implements Runnable{
     private IClientTable clientTable;
 
     // Connections Map
-    private final Map<String, TaggedConnection> connectionMap = new HashMap<>();
+    private final Map<String, ConnectionHandler> connectionsMap = new HashMap<>();
     private final ReentrantLock connectionsLock = new ReentrantLock();
 
     // Queue with frames to be handled by the main control thread
@@ -68,7 +67,7 @@ public class ControlWorker implements Runnable{
             acceptConnectionsThread.start();
 
             connectToNeighbours();
-            initiateNeighboursConnectionsReceivers();
+
             //TODO - Vai ser preciso criar threads com metodo q permita encerra-las e criar as threads mal uma
             // conexao seja aceite, caso seja necessario trocar o socket, elimina-se a thread q vai ser substituida. OU criar metodo q substitui a taggedconnection
 
@@ -116,7 +115,7 @@ public class ControlWorker implements Runnable{
         var neighbours = neighbourTable.getNeighbours();
         //Filters the neighbours that are already connected
         neighbours = neighbours.stream()
-                .filter(neighbour -> !connectionMap.containsKey(neighbour) )
+                .filter(neighbour -> !connectionsMap.containsKey(neighbour) )
                 .collect(Collectors.toList());
 
         for(String neighbour : neighbours)
@@ -142,15 +141,12 @@ public class ControlWorker implements Runnable{
                     connectionsLock.lock();
                     //Only adds the connection if there isn't already a connection
                     //Or in case there is, if the neighbours IP is lexically inferior
-                    TaggedConnection existingConnection = connectionMap.get(neighbour);
-                    if(existingConnection == null){
-                        connectionMap.put(neighbour, tc);
-                        neighbourTable.updateActiveState(neighbour,true);
-                    }
+                    ConnectionHandler ch = connectionsMap.get(neighbour);
+                    if(ch == null)
+                        initiateNeighbourConnectionReceiver(neighbour, tc);
                     else if(neighbour.compareTo(bindAddress) < 0) {
-                        existingConnection.close();
-                        connectionMap.put(neighbour, tc);
-                        neighbourTable.updateActiveState(neighbour,true);
+                        ch.close();
+                        initiateNeighbourConnectionReceiver(neighbour, tc);
                     }
                     else s.close();
                 }finally{connectionsLock.unlock();}
@@ -165,86 +161,120 @@ public class ControlWorker implements Runnable{
 
     private void attendNewConnections() throws IOException {
         //TODO - acrescentar condicao de encerramento gracioso
-        while (exception == null){
+        while (exception == null) {
             Socket s = ss.accept();
             s.setSoTimeout(timeToWaitForNeighbour);
             TaggedConnection tc = new TaggedConnection(s);
             String neighbour = s.getInetAddress().getHostAddress();
-            connectionsLock.lock();
-            try{
-                var frame = tc.receive();
-                if(frame.getTag()==2){
-                    acceptNeighbourConnection(s,neighbour,tc);
-                }
-            } finally{
-                connectionsLock.unlock();
+
+            var frame = tc.receive();
+            if (frame.getTag() == 2) {
+                acceptNeighbourConnection(s, neighbour, tc);
             }
         }
     }
 
     private void acceptNeighbourConnection(Socket s, String neighbour, TaggedConnection tc) throws IOException{
         //if the connectionMap already contains the ip of the Socket, an answer claiming the existence of the ip is sent
-        if(connectionMap.containsKey(neighbour)){
-            var b = Serialize.serializeBoolean(false);
-            connectionMap.get(neighbour).send(0,2,b);
-            s.close();
+
+        try {
+            connectionsLock.lock();
+            ConnectionHandler ch = connectionsMap.get(neighbour);
+            if(ch != null){
+                var b = Serialize.serializeBoolean(false);
+                ch.getTaggedConnection().send(0,2,b);
+                s.close();
+            }
+            //otherwise, an answer saying that the ip was added is sent
+            else{
+                var b = Serialize.serializeBoolean(true);
+                tc.send(0,2,b);
+                initiateNeighbourConnectionReceiver(neighbour, tc);
+            }
         }
-        //otherwise, an answer saying that the ip was added is sent
-        else{
-            connectionMap.put(neighbour,tc);
-            var b = Serialize.serializeBoolean(true);
-            tc.send(0,2,b);
-            neighbourTable.updateActiveState(neighbour, true);
+        finally {
+            connectionsLock.unlock();
         }
+
     }
 
 
     /* ****** Initiate Neighbour Connections Receivers ****** */
 
+    /*
     private void initiateNeighboursConnectionsReceivers() {
         var neighbours = neighbourTable.getNeighbours();
         try {
             connectionsLock.lock();
             neighbours = neighbours.stream()
-                    .filter(n -> !connectionMap.containsKey(n))
+                    .filter(n -> !connectionsMap.containsKey(n))
                     .collect(Collectors.toList());
         }finally { connectionsLock.unlock(); }
 
         for(String neighbour : neighbours)
             initiateNeighbourConnectionReceiver(neighbour);
-    }
+    }*/
 
-    private void initiateNeighbourConnectionReceiver(String neighbour){
-        Thread t = new Thread(() -> {
-            TaggedConnection tc;
+    private void initiateNeighbourConnectionReceiver(String neighbour, TaggedConnection tc){
+        ConnectionHandler ch = new ConnectionHandler(neighbour, tc);
+        try {
+            connectionsLock.lock();
+            if(connectionsMap.containsKey(neighbour)) return;
+            connectionsMap.put(neighbour, ch);
+            neighbourTable.updateActiveState(neighbour,true);
+        }finally { connectionsLock.unlock(); }
 
-            try {
-                connectionsLock.lock();
-                tc = connectionMap.get(neighbour);
-                if(tc == null) return;
-            }finally { connectionsLock.unlock(); }
-
-            //TODO - acrescentar condicao de encerramento gracioso
-            while (exception == null){
-                Frame frame = null;
-
-                //TODO - Verifications can be done here
-                try {frame = tc.receive(); }
-                catch (IOException ignored) {}
-
-                //Inserts frame in queue
-                if(frame != null)
-                    framesInputQueue.pushElem(new Tuple<>(neighbour, frame));
-            }
-        });
+        Thread t = new Thread(ch);
         t.start();
         threads.add(t);
     }
 
+    class ConnectionHandler implements Runnable {
+        private final String neighbour;
+        private TaggedConnection connection;
+        private boolean keepRunning = true;
 
+        public ConnectionHandler(String neighbour, TaggedConnection connection) {
+            this.connection = connection;
+            this.neighbour = neighbour;
+        }
 
+        public void run() {
+            while (keepRunning && exception == null) { //TODO - acrescentar condicao de encerramento gracioso
+                Frame frame = null;
 
+                //TODO - Verifications can be done here
+                try {
+                    frame = connection.receive();
+                } catch (IOException ignored) {
+                }
 
+                //Inserts frame in queue
+                if (frame != null)
+                    framesInputQueue.pushElem(new Tuple<>(neighbour, frame));
+            }
+            //try {
+            //    this.tc = new TaggedConnection(this.client);
+            //    Frame frame = tc.receive();
+            //    int tag = frame.getTag();
+            //    if(tag==3){flood(client,Serialize.deserializeListOfStrings(frame.getData()));}
+//
+            //} catch (IOException e) {
+            //    e.printStackTrace();
+            //}
+        }
+
+        public TaggedConnection getTaggedConnection() { return connection; }
+        public void setTaggedConnection(TaggedConnection connection) { this.connection = connection; }
+        public boolean isKeepRunning() { return keepRunning; }
+        public void setKeepRunning(boolean keepRunning) { this.keepRunning = keepRunning; }
+
+        public void close() {
+            keepRunning = false;
+            try { connection.close();}
+            catch (Exception ignored){}
+        }
+    }
 
 
 
