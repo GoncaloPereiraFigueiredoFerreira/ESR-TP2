@@ -22,6 +22,7 @@ public class ControlWorker implements Runnable{
     private final String bootstrapIP;
     private final int bootstrapPort = 12345;
     private int timeToWaitForBootstrap = 5 * 60 * 1000;
+    private TaggedConnection bootstrapConnection;
 
     //Self info
     private final String bindAddress;
@@ -56,7 +57,7 @@ public class ControlWorker implements Runnable{
     public void run() {
         try{
             ss = new ServerSocket(ssPort, 0, InetAddress.getByName(bindAddress));
-
+            connectToBootstrap();
             requestNeighbours();
 
             //Runs the thread responsible for accepting neighbours' connections
@@ -67,21 +68,44 @@ public class ControlWorker implements Runnable{
             acceptConnectionsThread.start();
 
             connectToNeighbours();
+            //Waits until the necessary conditions are fulfilled
+            try {checkStartConditions();} //TODO - alterar o sleep q esta funcao tem
+            catch (InterruptedException ignored) {}
+            informReadyStateToBootstrap();
 
-            //TODO - Vai ser preciso criar threads com metodo q permita encerra-las e criar as threads mal uma
-            // conexao seja aceite, caso seja necessario trocar o socket, elimina-se a thread q vai ser substituida. OU criar metodo q substitui a taggedconnection
+
+            //try {
+            //    this.tc = new TaggedConnection(this.client);
+            //    Frame frame = tc.receive();
+            //    int tag = frame.getTag();
+            //    if(tag==5){flood(client,Serialize.deserializeListOfStrings(frame.getData()));}
+            //
+            //} catch (IOException e) {
+            //    e.printStackTrace();
+            //}
 
         }catch (IOException ioe){
             //TODO - handle exception
             ioe.printStackTrace();
         }
 
+
+        //Closing process
+        try { bootstrapConnection.close(); }
+        catch (IOException ignored) {}
         for(Thread t : threads) {
             try { t.join();}
             catch (InterruptedException ignored) {}
         }
     }
 
+    /* ****** Connect To Bootstrap ****** */
+    private void connectToBootstrap() throws IOException {
+        //Connect to bootstrap
+        Socket s = new Socket(bootstrapIP, bootstrapPort);
+        s.setSoTimeout(timeToWaitForBootstrap);
+        TaggedConnection connection = new TaggedConnection(s);
+    }
 
     /* ****** Request Neighbours ****** */
 
@@ -90,22 +114,15 @@ public class ControlWorker implements Runnable{
      * @throws IOException if there is any problem with the socket or if the frame received was not the one expected.
      */
     private void requestNeighbours() throws IOException {
-        //Connect to bootstrap
-        Socket s = new Socket(bootstrapIP, bootstrapPort);
-        s.setSoTimeout(timeToWaitForBootstrap);
-        TaggedConnection connection = new TaggedConnection(s);
-
         //Get neighbours from bootstrap
-        connection.send(0, 1, new byte[]{});
-        Frame neighboursFrame = connection.receive();
+        bootstrapConnection.send(0, 1, new byte[]{});
+        Frame neighboursFrame = bootstrapConnection.receive();
         if(neighboursFrame.getTag() != 2)
             throw new IOException("Frame with tag 2 expected!");
         List<String> ips = Serialize.deserializeListOfStrings(neighboursFrame.getData());
 
         //Initial fill of neighbours' table
         this.neighbourTable.addNeighbours(ips);
-
-        s.close();
     }
 
 
@@ -160,21 +177,37 @@ public class ControlWorker implements Runnable{
     /* ****** Attend New Connections ****** */
 
     private void attendNewConnections() throws IOException {
+        Set<Thread> childThreads = new HashSet<>();
+
         //TODO - acrescentar condicao de encerramento gracioso
         while (exception == null) {
+            //Removes threads that finished
+            childThreads.removeIf(t -> !t.isAlive());
+
             Socket s = ss.accept();
             s.setSoTimeout(timeToWaitForNeighbour);
             TaggedConnection tc = new TaggedConnection(s);
-            String neighbour = s.getInetAddress().getHostAddress();
+            String contact = s.getInetAddress().getHostAddress();
 
-            var frame = tc.receive();
-            if (frame.getTag() == 2) {
-                acceptNeighbourConnection(s, neighbour, tc);
-            }
+            Thread t = new Thread(() -> {
+                try {
+                    Frame frame = tc.receive();
+                    switch (frame.getTag()) {
+                        case 2 -> acceptNeighbourConnection(contact, tc);
+                        case 3 -> acceptNewClient(contact, tc);
+                        case 4 -> acceptNewServer(contact, tc);
+                    }
+                } catch (IOException ignored) {}
+
+                try { tc.close(); }
+                catch (IOException ignored){}
+            });
+            t.start();
+            childThreads.add(t);
         }
     }
 
-    private void acceptNeighbourConnection(Socket s, String neighbour, TaggedConnection tc) throws IOException{
+    private void acceptNeighbourConnection(String neighbour, TaggedConnection tc) throws IOException{
         //if the connectionMap already contains the ip of the Socket, an answer claiming the existence of the ip is sent
 
         try {
@@ -183,7 +216,7 @@ public class ControlWorker implements Runnable{
             if(ch != null){
                 var b = Serialize.serializeBoolean(false);
                 ch.getTaggedConnection().send(0,2,b);
-                s.close();
+                tc.close();
             }
             //otherwise, an answer saying that the ip was added is sent
             else{
@@ -198,22 +231,25 @@ public class ControlWorker implements Runnable{
 
     }
 
+    //TODO - acabar depois de fazer flood
+    private void acceptNewClient(String client, TaggedConnection tc){
+        //true -> adicionar á tabela dos clientes
+        //pedir para criar rotas ate servidores
+        this.clientTable.addNewClient(client);
+    }
+
+    //TODO - acabar depois de fazer flood
+    private void acceptNewServer(String server, TaggedConnection tc){
+        //true -> adicionar á tabela dos servidores
+        //informar bootstrap q é servidor
+        this.clientTable.addNewServer(server);
+        try{
+            bootstrapConnection.send(0, 4,new byte[]{});
+        }catch (IOException ignored){}
+
+    }
 
     /* ****** Initiate Neighbour Connections Receivers ****** */
-
-    /*
-    private void initiateNeighboursConnectionsReceivers() {
-        var neighbours = neighbourTable.getNeighbours();
-        try {
-            connectionsLock.lock();
-            neighbours = neighbours.stream()
-                    .filter(n -> !connectionsMap.containsKey(n))
-                    .collect(Collectors.toList());
-        }finally { connectionsLock.unlock(); }
-
-        for(String neighbour : neighbours)
-            initiateNeighbourConnectionReceiver(neighbour);
-    }*/
 
     private void initiateNeighbourConnectionReceiver(String neighbour, TaggedConnection tc){
         ConnectionHandler ch = new ConnectionHandler(neighbour, tc);
@@ -253,15 +289,6 @@ public class ControlWorker implements Runnable{
                 if (frame != null)
                     framesInputQueue.pushElem(new Tuple<>(neighbour, frame));
             }
-            //try {
-            //    this.tc = new TaggedConnection(this.client);
-            //    Frame frame = tc.receive();
-            //    int tag = frame.getTag();
-            //    if(tag==3){flood(client,Serialize.deserializeListOfStrings(frame.getData()));}
-//
-            //} catch (IOException e) {
-            //    e.printStackTrace();
-            //}
         }
 
         public TaggedConnection getTaggedConnection() { return connection; }
@@ -277,35 +304,30 @@ public class ControlWorker implements Runnable{
     }
 
 
+    /* ****** Check Necessary Conditions to Start ****** */
 
+    private void checkStartConditions() throws InterruptedException {
+        boolean allReady = false;
+        var neighbours = neighbourTable.getNeighbours();
 
-    /*
-    public void run(){
-        try {
+        while (!allReady){
+            allReady = true;
 
-            lista_ips();
+            for(int i = 0; i < neighbours.size() && allReady; i++)
+                if(!neighbourTable.isActive(neighbours.get(i)))
+                    allReady = false;
 
-            int serverPort = 3000;
-            this.ss = new ServerSocket(serverPort);
-            if(server){init_flood();}
-
-            while(!closeServer.get()){
-                Socket s = this.ss.accept();
-                ConnectionHandler handler = new ConnectionHandler(s);
-                new Thread(handler).start();
-
-            }
-            ss.close();
-            closeServer.set(true);
-        } catch (IOException e) {
-            e.printStackTrace();
+            //TODO - substituir por metodo da NeighboursTable que aguarda que todos os neighbours estejam prontos
+            Thread.sleep(200);
         }
-
     }
 
+    /* ****** Inform bootstrap that the node is ready ****** */
 
-     */
-
+    private void informReadyStateToBootstrap() throws IOException {
+        //Informs bootstrap that the node is ready
+        bootstrapConnection.send(0, 5, new byte[]{});
+    }
 
     /**
      * regista o valor da lista de ips dos vizinhos

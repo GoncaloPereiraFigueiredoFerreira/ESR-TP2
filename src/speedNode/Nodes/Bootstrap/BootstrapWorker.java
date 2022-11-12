@@ -28,6 +28,7 @@ public class BootstrapWorker implements Runnable{
         this.connection = new TaggedConnection(socket);
     }
 
+    //TODO - Retificar tudo depois de acabar OverlayNode
     @Override
     public void run() {
         try {
