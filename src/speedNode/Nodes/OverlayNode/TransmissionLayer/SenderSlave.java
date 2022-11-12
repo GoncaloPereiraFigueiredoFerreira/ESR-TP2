@@ -1,4 +1,4 @@
-package speedNode.Nodes.OverlayNode;
+package speedNode.Nodes.OverlayNode.TransmissionLayer;
 
 import speedNode.Nodes.ProtectedQueue;
 import speedNode.Nodes.Tables.INeighbourTable;
@@ -24,12 +24,9 @@ public class SenderSlave  implements Runnable{
         // Fica a espera de uma adição na outputqueue
         boolean working=true;
         while (working) {
-            if (outputQueue.length() == 0) {
-                // Fica bloqueado a espera de pacotes na queue
-                try {
-                    outputQueue.awaitSignal();
-                } catch (InterruptedException ignored) {}
-            }
+
+            // Waits for the outputqueue to have at least one datagram inside
+            outputQueue.awaitPush();
             DatagramPacket dp = outputQueue.popElem();
             try {
                 ds.send(dp);

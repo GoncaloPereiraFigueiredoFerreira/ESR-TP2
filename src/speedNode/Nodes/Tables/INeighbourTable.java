@@ -7,7 +7,7 @@ public interface INeighbourTable {
     /**
      * Table that contains the columns:
      *
-     *     IP of the neighbour    |   Flag: Is it active      |   Flag: Does it want the stream
+     *     IP of the neighbour    |   Flag: Is it active      |   Flag: Does it want the stream |  Time it takes to jump
      *
      */
 
@@ -70,4 +70,17 @@ public interface INeighbourTable {
      */
     List<String> getConnectedNeighbours();
 
+    /**
+     * Updates the jump time to a certain neighbour
+     * @param ip Ip of the neighbour
+     * @param newTimeStamp New time for the jump
+     */
+    void updateLastJumpTime(String ip,long newTimeStamp);
+
+    /**
+     * Returns the time that it takes to jump from the neighbour to the current Node
+     * @param ip Ip of the neighbour
+     * @return Returns a long value that represents the time it takes to jump from the neighbour to the current node
+     */
+    long getLastJumpTime(String ip);
 }

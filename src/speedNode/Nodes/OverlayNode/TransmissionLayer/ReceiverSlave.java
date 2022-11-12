@@ -1,4 +1,4 @@
-package speedNode.Nodes.OverlayNode;
+package speedNode.Nodes.OverlayNode.TransmissionLayer;
 
 import speedNode.Nodes.ProtectedQueue;
 
@@ -19,6 +19,7 @@ public class ReceiverSlave implements Runnable{
 
     @Override
     public void run() {
+
         DatagramPacket dp = new DatagramPacket(new byte[TransmitionWorker.MAX_UDP_P_SIZE],TransmitionWorker.MAX_UDP_P_SIZE);
         try {
             while(true) {
@@ -29,4 +30,5 @@ public class ReceiverSlave implements Runnable{
             e.printStackTrace();
         }
     }
+
 }

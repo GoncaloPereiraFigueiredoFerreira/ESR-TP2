@@ -2,7 +2,6 @@ package speedNode.Nodes.Tables;
 
 import speedNode.Utils.Tuple;
 
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,11 +13,15 @@ public class NeighbourTable implements INeighbourTable{
     /**
      * Table that contains the columns:
      *
-     *     IP of the neighbour    |   Flag: Is it active      |   Flag: Does it want the stream
+     *     IP of the neighbour    |   Flag: Is it active      |   Flag: Does it want the stream  |     Timestamp of last jump
      *
      */
     private final HashMap<String, Tuple<Boolean,Boolean>> Neighbours = new HashMap<>();
-    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+    private final HashMap<String, Long> timeStamp = new HashMap<>();
+    private final ReadWriteLock neighboursLock = new ReentrantReadWriteLock();
+    private final ReadWriteLock timestampLock = new ReentrantReadWriteLock();
+
+
     public NeighbourTable(){
 
     }
@@ -26,69 +29,72 @@ public class NeighbourTable implements INeighbourTable{
     @Override
     public boolean addNeighbour(String ip) {
         try{
-            readWriteLock.writeLock().lock();
+            neighboursLock.writeLock().lock();
+            timestampLock.writeLock().lock();
             if (this.Neighbours.containsKey(ip)) return false;
             else {
                 this.Neighbours.put(ip, new Tuple<>(false, false));
+                this.timeStamp.put(ip, (long) -1); // Inicialmente o timestamp estará a -1 se a conexão ainda não tiver sido usada
                 return true;
             }
         }finally {
-            readWriteLock.writeLock().unlock();
+            neighboursLock.writeLock().unlock();
+            timestampLock.writeLock().unlock();
         }
     }
 
     @Override
     public boolean addNeighbours(List<String> ips) {
         try{
-            readWriteLock.writeLock().lock();
+            neighboursLock.writeLock().lock();
             if (ips.stream().anyMatch((x) -> !this.Neighbours.containsKey(x))) return false;
             else{
                 ips.stream().map((x)->this.Neighbours.put(x,new Tuple<>(false, false)));
                 return true;
             }
         }finally {
-            readWriteLock.writeLock().unlock();
+            neighboursLock.writeLock().unlock();
         }
     }
 
     @Override
     public List<String> getNeighbours() {
         try {
-            readWriteLock.readLock().lock();
+            neighboursLock.readLock().lock();
             ArrayList<String> ips = new ArrayList<>(); 
             this.Neighbours.keySet().stream().map((x)->ips.add(x));
             return ips;
         }finally {
-            readWriteLock.readLock().unlock();
+            neighboursLock.readLock().unlock();
         }
     }
 
     @Override
     public boolean isActive(String ip) {
         try {
-            readWriteLock.readLock().lock();
+            neighboursLock.readLock().lock();
             if (!this.Neighbours.containsKey(ip)) return false;
             else return this.Neighbours.get(ip).fst;
         }finally {
-            readWriteLock.readLock().unlock();
+            neighboursLock.readLock().unlock();
         }
     }
 
     @Override
     public boolean isConnected(String ip) {
         try {
-            readWriteLock.readLock().lock();
+            neighboursLock.readLock().lock();
             if (!this.Neighbours.containsKey(ip)) return false;
             else return this.Neighbours.get(ip).snd;
         }finally {
-            readWriteLock.readLock().unlock();
+            neighboursLock.readLock().unlock();
         }
     }
 
     @Override
     public boolean updateConnectionNeighbour(String ip, boolean connected) {
         try {
-            readWriteLock.writeLock().lock();
+            neighboursLock.writeLock().lock();
             if (!this.Neighbours.containsKey(ip)) return false;
             else {
                 Boolean active = this.Neighbours.get(ip).fst;
@@ -98,14 +104,14 @@ public class NeighbourTable implements INeighbourTable{
             }
 
         }finally {
-            readWriteLock.writeLock().unlock();
+            neighboursLock.writeLock().unlock();
         }
     }
 
     @Override
     public boolean updateActiveState(String ip, boolean activate) {
         try {
-            readWriteLock.writeLock().lock();
+            neighboursLock.writeLock().lock();
             if (!this.Neighbours.containsKey(ip)) return false;
             else {
                 Boolean connected = this.Neighbours.get(ip).snd;
@@ -115,7 +121,7 @@ public class NeighbourTable implements INeighbourTable{
             }
 
         }finally {
-            readWriteLock.writeLock().unlock();
+            neighboursLock.writeLock().unlock();
         }
     }
 
@@ -123,15 +129,39 @@ public class NeighbourTable implements INeighbourTable{
     public List<String> getConnectedNeighbours(){
         ArrayList<String> lst = new ArrayList<>();
         try {
-            readWriteLock.readLock().lock();
+            neighboursLock.readLock().lock();
         for (Map.Entry<String,Tuple<Boolean,Boolean>> entry: this.Neighbours.entrySet() ){
             if (entry.getValue().snd == Boolean.TRUE) lst.add(entry.getKey());
         }
         return lst;
         }finally {
-            readWriteLock.readLock().unlock();
+            neighboursLock.readLock().unlock();
         }
     }
+
+    public long getLastJumpTime(String ip){
+        try{
+            timestampLock.readLock().lock();
+            return timeStamp.get(ip);
+        }finally {
+            timestampLock.readLock().unlock();
+        }
+    }
+
+    public void updateLastJumpTime(String ip,long newTimeStamp){
+        try{
+            timestampLock.writeLock().lock();
+            timeStamp.replace(ip,newTimeStamp);
+        }finally {
+            timestampLock.writeLock().unlock();
+        }
+    }
+
+
+
+
+
+
 
 
 

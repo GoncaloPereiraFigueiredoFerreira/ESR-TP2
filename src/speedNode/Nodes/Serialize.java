@@ -6,6 +6,57 @@ import java.util.List;
 
 public class Serialize {
 
+    public static byte[] serializeInteger(int number) throws IOException{
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream out = new ObjectOutputStream(baos);
+
+        out.writeInt(number);
+        out.flush();
+
+        byte[] byteArray= baos.toByteArray();
+        out.close();
+        baos.close();
+        return byteArray;
+    }
+
+
+
+    public static byte[] serializeLong(long number) throws IOException{
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream out = new ObjectOutputStream(baos);
+
+        out.writeLong(number);
+        out.flush();
+
+        byte[] byteArray= baos.toByteArray();
+        out.close();
+        baos.close();
+        return byteArray;
+    }
+
+    public static int deserializeInteger(byte[] buffer) throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(buffer);
+        ObjectInputStream in = new ObjectInputStream(bais);
+
+        int anInt = in.readInt();
+
+        in.close();
+        bais.close();
+        return anInt;
+    }
+
+    public static long deserializeLong(byte[] buffer) throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(buffer);
+        ObjectInputStream in = new ObjectInputStream(bais);
+
+        long anlong = in.readLong();
+
+        in.close();
+        bais.close();
+        return anlong;
+    }
+
+
     public static byte[] serializeBoolean (boolean bool) throws IOException{
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ObjectOutputStream out = new ObjectOutputStream(baos);
@@ -46,7 +97,6 @@ public class Serialize {
         out.close();
         baos.close();
         return byteArray;
-
     }
 
     public static List<String> deserializeListOfStrings (byte[] bytes) throws IOException{

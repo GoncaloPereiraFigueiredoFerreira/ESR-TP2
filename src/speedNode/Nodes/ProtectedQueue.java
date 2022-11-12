@@ -5,6 +5,7 @@ import java.util.Deque;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Predicate;
 
 public class ProtectedQueue<X> {
     private final Deque<X> queue = new ArrayDeque<>();
@@ -19,7 +20,6 @@ public class ProtectedQueue<X> {
             return queue.pop();
         }finally {
             rwLock.writeLock().unlock();
-            cond.signalAll();
         }
     }
 
@@ -41,9 +41,16 @@ public class ProtectedQueue<X> {
         }
     }
 
-    public void awaitSignal() throws InterruptedException {
-        this.cond.await();
+    public void awaitPush() {
+        while (this.length() == 0){
+            // Fica bloqueado a espera de pacotes na queue
+            try {
+                cond.await();
+            } catch (InterruptedException ignored) {}
+        }
     }
+
+
 
     public int length(){
         try{
