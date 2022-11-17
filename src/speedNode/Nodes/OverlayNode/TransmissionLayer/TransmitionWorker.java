@@ -31,7 +31,11 @@ public class TransmitionWorker implements Runnable{
 
         try{
             this.ds = new DatagramSocket(PORT);
-        }catch (SocketException ignored){}
+        }catch (SocketException e){
+            System.out.println("Error in Socket initialization!!");
+            e.printStackTrace();
+            System.exit(-1);
+        }
 
         // Initialize the two slaves
         ReceiverSlave rs = new ReceiverSlave(ds,inputQueue);
@@ -60,23 +64,39 @@ public class TransmitionWorker implements Runnable{
             // If the package comes from a server
             if (this.clientTable.getAllServers().contains(ip)) {
                 // Wraps the RTP package in a FTRapid one
-                newPackage = new FTRapidV2(System.currentTimeMillis(), 0, input.getData(), input.getLength());
+                long timestamp =System.currentTimeMillis();
+                newPackage = new FTRapidV2(timestamp,timestamp, 0, input.getData(), input.getLength(),ip);
+
             }
             // Else if it comes from a neighbour
             else if (this.neighbourTable.getNeighbours().contains(ip)) {
                 FTRapidV2 oldPacket = new FTRapidV2(input.getData(), input.getLength());
+            /*
+            Deteção de atraso no salto:
 
                 long supposedTime = this.neighbourTable.getLastJumpTime(ip);
-                long timestamp = oldPacket.getTimestamp();
+                long timestamp = oldPacket.getLastJumpTimeSt();
                 long currTime = System.currentTimeMillis();
                 long diff = currTime - timestamp;
 
                 if (supposedTime != -1 && detectDelay(ip,0.3f,diff)){
-                    // Alert delay
+                    // Alert delay in jump
                 }else{
                     this.neighbourTable.updateLastJumpTime(ip,diff);
                 }
-                newPackage = new FTRapidV2(currTime, oldPacket.getJumps() +1, oldPacket.getPayload(),oldPacket.getPayloadLength());
+            */
+                long initTimeSt = oldPacket.getInitialTimeSt();
+                int jumps = oldPacket.getJumps();
+                String serverIP = oldPacket.getServerIP();
+                long currTime = System.currentTimeMillis();
+
+                // Updates the routing table with the time it took the packet to reach the current node
+                this.routingTable.updateMetrics(serverIP,ip,jumps,currTime-initTimeSt);
+
+                // Update neighbour jump // Here we could detect a delay in the jump
+                this.neighbourTable.updateLastJumpTime(ip,currTime - oldPacket.getLastJumpTimeSt());
+
+                newPackage = new FTRapidV2(initTimeSt,currTime,jumps+1, oldPacket.getPayload(), oldPacket.getPayloadLength(),serverIP );
             }
 
             // If the package was processed correctly, send it
