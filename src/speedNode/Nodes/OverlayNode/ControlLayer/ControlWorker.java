@@ -1,9 +1,10 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
-import speedNode.Nodes.ProtectedQueue;
-import speedNode.Nodes.Serialize;
+import speedNode.Utilities.ProtectedQueue;
+import speedNode.Utilities.Serialize;
 import speedNode.Nodes.Tables.*;
-import speedNode.TaggedConnection.TaggedConnection;
+import speedNode.Utilities.Tags;
+import speedNode.Utilities.TaggedConnection.TaggedConnection;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -13,8 +14,8 @@ import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
-import speedNode.TaggedConnection.Frame;
-import speedNode.Utils.Tuple;
+import speedNode.Utilities.TaggedConnection.Frame;
+import speedNode.Utilities.Tuple;
 
 
 public class ControlWorker implements Runnable{
@@ -44,7 +45,19 @@ public class ControlWorker implements Runnable{
 
     // To keep track of the threads that need to join the main thread when terminating the program
     private final Set<Thread> threads = new HashSet<>();
-    Exception exception = null;
+
+    // To keep track of the neighbours that were sent the flood msg
+    private List<String> floodSent = new ArrayList<>();
+
+    //Child threads will use this exception as stop flag
+    private Exception exception = null;
+
+    // true when the node is for flood operations
+    private boolean ready = false;
+
+    // true when there is, at least one route to a server
+    private boolean readyToActivateRoutes = false;
+
     public ControlWorker(String bindAddress, String bootstrapIP, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.bindAddress = bindAddress;
         this.neighbourTable = neighbourTable;
@@ -68,21 +81,18 @@ public class ControlWorker implements Runnable{
             acceptConnectionsThread.start();
 
             connectToNeighbours();
-            //Waits until the necessary conditions are fulfilled
-            try {checkStartConditions();} //TODO - alterar o sleep q esta funcao tem
-            catch (InterruptedException ignored) {}
+            try {
+                //Waits until the necessary conditions are fulfilled
+                checkStartConditions(); //TODO - alterar o sleep q esta funcao tem
+            } catch (InterruptedException ignored) {}
+
             informReadyStateToBootstrap();
+            ready = true;
 
-
-            //try {
-            //    this.tc = new TaggedConnection(this.client);
-            //    Frame frame = tc.receive();
-            //    int tag = frame.getTag();
-            //    if(tag==5){flood(client,Serialize.deserializeListOfStrings(frame.getData()));}
-            //
-            //} catch (IOException e) {
-            //    e.printStackTrace();
-            //}
+            while(exception != null){
+                Tuple<String,Frame> tuple = framesInputQueue.popElem();
+                handleFrame(tuple.fst, tuple.snd);
+            }
 
         }catch (IOException ioe){
             //TODO - handle exception
@@ -104,7 +114,7 @@ public class ControlWorker implements Runnable{
         //Connect to bootstrap
         Socket s = new Socket(bootstrapIP, bootstrapPort);
         s.setSoTimeout(timeToWaitForBootstrap);
-        TaggedConnection connection = new TaggedConnection(s);
+        bootstrapConnection = new TaggedConnection(s);
     }
 
     /* ****** Request Neighbours ****** */
@@ -115,10 +125,10 @@ public class ControlWorker implements Runnable{
      */
     private void requestNeighbours() throws IOException {
         //Get neighbours from bootstrap
-        bootstrapConnection.send(0, 1, new byte[]{});
+        bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOUR_CONNECTION, new byte[]{});
         Frame neighboursFrame = bootstrapConnection.receive();
-        if(neighboursFrame.getTag() != 2)
-            throw new IOException("Frame with tag 2 expected!");
+        if(neighboursFrame.getTag() != Tags.RESPONSE_NEIGHBOUR_CONNECTION)
+            throw new IOException("Frame with tag" + Tags.RESPONSE_NEIGHBOUR_CONNECTION + "expected!");
         List<String> ips = Serialize.deserializeListOfStrings(neighboursFrame.getData());
 
         //Initial fill of neighbours' table
@@ -144,10 +154,11 @@ public class ControlWorker implements Runnable{
             Socket s = new Socket(neighbour, ssPort);
             s.setSoTimeout(timeToWaitForNeighbour); //Sets the waiting time till the connection is established, after which the connection is dropped
             TaggedConnection tc = new TaggedConnection(s);
-            Frame frame = tc.receive();
+            tc.send(0, Tags.REQUEST_NEIGHBOUR_CONNECTION, new byte[]{}); //Send connection request
+            Frame frame = tc.receive(); //Waits for answer
 
-            //If the tag is not 2 than the connection is refused
-            if(frame.getTag() != 2){
+            //If the tag is not equal to RESPONSE_NEIGHBOUR_CONNECTION then the connection is refused
+            if(frame.getTag() != Tags.RESPONSE_NEIGHBOUR_CONNECTION){
                 s.close();
             }
 
@@ -193,9 +204,9 @@ public class ControlWorker implements Runnable{
                 try {
                     Frame frame = tc.receive();
                     switch (frame.getTag()) {
-                        case 2 -> acceptNeighbourConnection(contact, tc);
-                        case 3 -> acceptNewClient(contact, tc);
-                        case 4 -> acceptNewServer(contact, tc);
+                        case Tags.REQUEST_NEIGHBOUR_CONNECTION -> acceptNeighbourConnection(contact, tc);
+                        case Tags.CONNECT_AS_CLIENT_EXCHANGE -> acceptNewClient(contact, tc);
+                        case Tags.CONNECT_AS_SERVER_EXCHANGE -> acceptNewServer(contact, tc);
                     }
                 } catch (IOException ignored) {}
 
@@ -208,20 +219,20 @@ public class ControlWorker implements Runnable{
     }
 
     private void acceptNeighbourConnection(String neighbour, TaggedConnection tc) throws IOException{
-        //if the connectionMap already contains the ip of the Socket, an answer claiming the existence of the ip is sent
 
+        //if the connectionMap already contains the ip of the Socket, an answer claiming the existence of the ip is sent
         try {
             connectionsLock.lock();
             ConnectionHandler ch = connectionsMap.get(neighbour);
             if(ch != null){
                 var b = Serialize.serializeBoolean(false);
-                ch.getTaggedConnection().send(0,2,b);
+                tc.send(0,Tags.RESPONSE_NEIGHBOUR_CONNECTION,b);
                 tc.close();
             }
             //otherwise, an answer saying that the ip was added is sent
             else{
                 var b = Serialize.serializeBoolean(true);
-                tc.send(0,2,b);
+                tc.send(0,Tags.RESPONSE_NEIGHBOUR_CONNECTION,b);
                 initiateNeighbourConnectionReceiver(neighbour, tc);
             }
         }
@@ -232,21 +243,70 @@ public class ControlWorker implements Runnable{
     }
 
     //TODO - acabar depois de fazer flood
-    private void acceptNewClient(String client, TaggedConnection tc){
+    private void acceptNewClient(String client, TaggedConnection tc) throws IOException {
+        this.clientTable.addNewClient(client);
+        tc.send(0, Tags.CONNECT_AS_CLIENT_EXCHANGE, new byte[]{});
+
+        while(!readyToActivateRoutes){
+            try {
+                //TODO - talvez substituir sleep por await de uma condition
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                System.out.println("Interrupted (activate best route)");
+                return;
+            }
+        }
+
+        activateBestRoute();
         //true -> adicionar á tabela dos clientes
         //pedir para criar rotas ate servidores
-        this.clientTable.addNewClient(client);
     }
 
     //TODO - acabar depois de fazer flood
     private void acceptNewServer(String server, TaggedConnection tc){
         //true -> adicionar á tabela dos servidores
         //informar bootstrap q é servidor
-        this.clientTable.addNewServer(server);
         try{
-            bootstrapConnection.send(0, 4,new byte[]{});
-        }catch (IOException ignored){}
+            //Acknowledge server
+            tc.send(0, Tags.CONNECT_AS_SERVER_EXCHANGE, new byte[]{});
 
+            //Request permission to flood
+            bootstrapConnection.send(0, Tags.FLOOD_PERMISSION_EXCHANGE, new byte[]{});
+
+            //Receives response from bootstrap
+            Frame frame = bootstrapConnection.receive();
+
+            //Checks the tag
+            if(frame.getTag() == Tags.FLOOD_PERMISSION_EXCHANGE){
+                boolean answer = Serialize.deserializeBoolean(frame.getData());
+                if(answer) {
+                    tc.send(0, Tags.REQUEST_STREAM, new byte[]{});
+
+                    while (!ready){
+                        try {
+                            //TODO - talvez substituir sleep por await de uma condition
+                            Thread.sleep(200);
+                        } catch (InterruptedException e) {
+                            System.out.println("Interrupted (flood)");
+                            return;
+                        }
+                    }
+
+                    this.clientTable.addNewServer(server);
+                    startFlood(server);
+                }
+                else {
+                    // If the answer is not affirmative, cancels the stream
+                    tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
+                }
+            }
+            else {
+                //If the tag does not match "FLOOD_PERMISSION_EXCHANGE", then cancels the stream
+                tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
+                return;
+            }
+
+        }catch (IOException ignored){}
     }
 
     /* ****** Initiate Neighbour Connections Receivers ****** */
@@ -280,10 +340,8 @@ public class ControlWorker implements Runnable{
                 Frame frame = null;
 
                 //TODO - Verifications can be done here
-                try {
-                    frame = connection.receive();
-                } catch (IOException ignored) {
-                }
+                try { frame = connection.receive(); }
+                catch (IOException ignored) {}
 
                 //Inserts frame in queue
                 if (frame != null)
@@ -295,6 +353,7 @@ public class ControlWorker implements Runnable{
         public void setTaggedConnection(TaggedConnection connection) { this.connection = connection; }
         public boolean isKeepRunning() { return keepRunning; }
         public void setKeepRunning(boolean keepRunning) { this.keepRunning = keepRunning; }
+
 
         public void close() {
             keepRunning = false;
@@ -326,139 +385,88 @@ public class ControlWorker implements Runnable{
 
     private void informReadyStateToBootstrap() throws IOException {
         //Informs bootstrap that the node is ready
-        bootstrapConnection.send(0, 5, new byte[]{});
+        bootstrapConnection.send(0, Tags.INFORM_READY_STATE, new byte[]{});
     }
 
-    /**
-     * regista o valor da lista de ips dos vizinhos
-     * @throws IOException
+
+    /* ****** Activate best route ****** */
+
+    //TODO - acabar activateBestRoute
+    private void activateBestRoute() {
+        routingTable.activateBestRoute();
+        //Se a rota mudou
+        //  -> Contactar novo vizinho e cancelar rota antiga (se existir)
+        //Else
+        //  -> nao fazer nada
+    }
+
+
+    /* ****** Flood ****** */
+
+    /* *** PAYLOAD ***
+        Composed by:
+            -> server that triggered the flood
+            -> number of jumps between overlay nodes
+            -> timestamp of the start of the flood
+
      */
 
-    //private void lista_ips() throws IOException {
-    //    byte[] b = {};
-    //    Socket bootstrapSocket = new Socket(this.bootstrapIP, this.bootstrapPort);
-    //    tc = new TaggedConnection(bootstrapSocket);
-    //    tc.send(0,1,b); //Send request with tag 1
-    //    Frame frame = tc.receive();
-    //    List<String> ips = Serialize.deserializeListOfStrings(frame.getData());
-    //    System.out.println(ips); //TODO - remover print
-    //    initial_tables(ips);
-    //    this.ips=ips;
-    //}
-//
-    //private void initial_tables(List<String> ips){
-    //    this.neighbourTable.addNeighbours(ips);
-    //}
-//
-    ///**
-    // *  a mensagem que envia é composta por [ipServidor,ipNodo,nºsaltos,tempo]
-    // *  ver tags do taggedConnection
-    // */
-//
-    //private void init_flood() throws IOException {
-    //    List<String> msg_flood_init = new ArrayList<>();
-//
-    //    //TODO- ver se ServerSocket.getInetAddress().getHostAddress() retorna o ip da maquina em que esta
-    //    //ip servidor
-    //    msg_flood_init.add(ss.getInetAddress().getHostAddress());
-    //    System.out.println("nao deve dar local host: "+ss.getInetAddress().getHostAddress());//TODO-tirar print
-    //    //ip nodo atual
-    //    msg_flood_init.add(ss.getInetAddress().getHostAddress());
-    //    //nº saltos
-    //    msg_flood_init.add("0");
-    //    //tempo
-    //    String time= ""+System.currentTimeMillis();
-    //    msg_flood_init.add(time);
-//
-    //    for(String ip : ips){
-    //        Socket s = new Socket(ip,3000);
-    //        TaggedConnection tc = new TaggedConnection(s);
-    //        tc.send(0,3,Serialize.serializeListOfStrings(msg_flood_init));
-    //    }
-    //}
-//
-    ///**
-    // *
-    // * @param previous_msg mensagem enviada pelo vizinho
-    // * @return mensagem para enviar aos vizinhos
-    // */
-    //private List<String> floodMsg(Socket cliente,List<String> previous_msg){
-    //    String Serverip=previous_msg.get(0);
-    //    //TODO-ver se o ip é assim que se descobre
-    //    String Ip= cliente.getInetAddress().getHostAddress();
-    //    String Jumps = Integer.toString(Integer.parseInt(previous_msg.get(2))+1);
-    //    String tempo=previous_msg.get(3);
-//
-    //    List<String> msg_flood = new ArrayList<>();
-//
-    //    msg_flood.add(Serverip);
-    //    msg_flood.add(Ip);
-    //    msg_flood.add(Jumps);
-    //    msg_flood.add(tempo);
-//
-    //    return msg_flood;
-//
-    //}
-//
-    ///**
-    // *
-    // * @param cliente
-    // * @param previous_msg
-    // */
-    //private void makeTables(Socket cliente,List<String> previous_msg){
-    //    String Serverip=previous_msg.get(0);
-    //    String vizinhoIp= cliente.getInetAddress().getHostAddress();
-    //    int Jumps = Integer.parseInt(previous_msg.get(2));
-    //    float Time = System.currentTimeMillis()-Long.parseLong(previous_msg.get(3));
-    //    this.routingTable.addServerPath(Serverip,vizinhoIp,Jumps,Time,false);
-    //}
-//
-    //private void flood(Socket cliente,List<String> data) throws IOException {
-    //    floodMsg(cliente,data);
-//
-    //    //TODO-Fazer as tabelas
-    //    makeTables(cliente,data);
-//
-    //    List<String> msg_flood = new ArrayList<>();
-//
-//
-//
-    //    //tempo
-//
-//
-    //    for(String ip : ips){
-    //        Socket s = new Socket(ip,3000);
-    //        TaggedConnection tc = new TaggedConnection(s);
-    //        //[se é ou nao servidor-neste caso é sempre servidor, nº saltos - neste caso é 0,tempo em milisegundos desde que]
-    //        tc.send(0,1,Serialize.serializeListOfStrings(msg_flood));
-    //    }
-//
-    //}
-//
-//
-    //class ConnectionHandler implements Runnable{
-    //    private final Socket client;
-    //    private TaggedConnection tc;
-//
-    //    public ConnectionHandler(Socket client){
-    //        this.client= client;
-    //    }
-//
-    //    public void run(){
-    //        try {
-    //            this.tc = new TaggedConnection(this.client);
-    //            Frame frame = tc.receive();
-    //            int tag = frame.getTag();
-    //            if(tag==3){flood(client,Serialize.deserializeListOfStrings(frame.getData()));}
-//
-    //        } catch (IOException e) {
-    //            e.printStackTrace();
-    //        }
-    //    }
-//
-    //}
+    //TODO - fazer flood
+    private void startFlood(String server) throws IOException{
+        for(ConnectionHandler ch : connectionsMap.values()){
+            TaggedConnection tc = ch.getTaggedConnection();
+
+            // Construct payload
+            List<String> msg_flood = new ArrayList<>();
+            msg_flood.add(server); // Server
+            msg_flood.add("0");  // nr of jumps
+            String time = Long.toString(System.currentTimeMillis());
+            msg_flood.add(time); // timestamp of the start of the flood
+
+            tc.send(0,Tags.FLOOD,Serialize.serializeListOfStrings(msg_flood));
+        }
+    }
 
 
 
+    /* ****** Handle Frames Received ****** */
+    private void handleFrame(String ip, Frame frame) {
+        if(frame == null)
+            return;
+        try {
+            switch (frame.getTag()){
+                case Tags.FLOOD -> handleFloodFrame(ip,frame);
+                //case Tags.ACTIVATE_ROUTE -> handleActivateRoute(frame);
+                //case Tags.DEACTIVATE_ROUTE -> handleDeactivateRoute(frame);
+            }
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+    }
 
+    private void handleFloodFrame(String ip,Frame frame) throws IOException{
+        var previous_msg = Serialize.deserializeListOfStrings(frame.getData());
+
+        //inserting a server path to Routing Table
+        String ServerIp=previous_msg.get(0);
+        int Jumps = Integer.parseInt(previous_msg.get(1)) + 1;
+        float Time = System.currentTimeMillis()-Long.parseLong(previous_msg.get(2));
+        this.routingTable.addServerPath(ServerIp,ip,Jumps,Time,false);
+
+        for(ConnectionHandler ch : connectionsMap.values()){
+            if( !this.routingTable.existsInRoutingTable(ServerIp,ch.neighbour) && !floodSent.contains(ch.neighbour) ){
+
+                TaggedConnection tc = ch.getTaggedConnection();
+
+                List<String> msg_flood = new ArrayList<>();
+                msg_flood.add(ServerIp);
+                msg_flood.add(Integer.toString(Jumps));
+                msg_flood.add(previous_msg.get(2));
+
+                tc.send(0,Tags.FLOOD,Serialize.serializeListOfStrings(msg_flood));
+                floodSent.add(ch.neighbour);
+
+            }
+        }
+    }
 }

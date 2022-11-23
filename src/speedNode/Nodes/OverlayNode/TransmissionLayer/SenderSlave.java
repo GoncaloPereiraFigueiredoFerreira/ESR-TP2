@@ -1,13 +1,10 @@
 package speedNode.Nodes.OverlayNode.TransmissionLayer;
 
-import speedNode.Nodes.ProtectedQueue;
-import speedNode.Nodes.Tables.INeighbourTable;
+import speedNode.Utilities.ProtectedQueue;
 
-import javax.xml.crypto.Data;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.util.List;
 
 public class SenderSlave  implements Runnable{
     private final DatagramSocket ds ;

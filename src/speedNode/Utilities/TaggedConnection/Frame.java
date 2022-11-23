@@ -1,4 +1,4 @@
-package speedNode.TaggedConnection;
+package speedNode.Utilities.TaggedConnection;
 
 public class Frame {
     private final int number;

@@ -1,6 +1,6 @@
 package speedNode.Nodes.OverlayNode.TransmissionLayer;
 
-import speedNode.Nodes.Serialize;
+import speedNode.Utilities.Serialize;
 
 import java.io.IOException;
 import java.net.InetAddress;

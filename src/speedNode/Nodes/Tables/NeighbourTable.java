@@ -1,6 +1,6 @@
 package speedNode.Nodes.Tables;
 
-import speedNode.Utils.Tuple;
+import speedNode.Utilities.Tuple;
 
 import java.util.ArrayList;
 import java.util.HashMap;

@@ -1,7 +1,8 @@
-package speedNode.Nodes;
+package speedNode.Utilities;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public class Serialize {
@@ -18,8 +19,6 @@ public class Serialize {
         baos.close();
         return byteArray;
     }
-
-
 
     public static byte[] serializeLong(long number) throws IOException{
         ByteArrayOutputStream baos = new ByteArrayOutputStream();

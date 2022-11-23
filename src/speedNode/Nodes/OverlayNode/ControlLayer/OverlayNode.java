@@ -1,7 +1,7 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
 import speedNode.Nodes.Tables.*;
-import speedNode.TaggedConnection.TaggedConnection;
+import speedNode.Utilities.TaggedConnection.TaggedConnection;
 
 import java.util.List;
 
@@ -41,7 +41,7 @@ public class OverlayNode implements Runnable{
             return;
         }
         //TODO-falta fazer nao sei o que
-        OverlayNode node = new OverlayNode(args.get(0),args.get(1),args.get(2));
-        node.run();
+        //OverlayNode node = new OverlayNode(args.get(0),args.get(1),args.get(2));
+        //node.run();
     }
 }

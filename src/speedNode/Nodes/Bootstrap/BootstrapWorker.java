@@ -1,8 +1,8 @@
 package speedNode.Nodes.Bootstrap;
 
-import speedNode.Nodes.Serialize;
-import speedNode.TaggedConnection.Frame;
-import speedNode.TaggedConnection.TaggedConnection;
+import speedNode.Utilities.Serialize;
+import speedNode.Utilities.TaggedConnection.Frame;
+import speedNode.Utilities.TaggedConnection.TaggedConnection;
 
 import java.io.IOException;
 import java.net.Socket;

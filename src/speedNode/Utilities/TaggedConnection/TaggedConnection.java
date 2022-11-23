@@ -1,4 +1,4 @@
-package speedNode.TaggedConnection;
+package speedNode.Utilities.TaggedConnection;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;

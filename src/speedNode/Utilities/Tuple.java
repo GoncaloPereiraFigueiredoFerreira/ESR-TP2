@@ -1,4 +1,4 @@
-package speedNode.Utils;
+package speedNode.Utilities;
 
 // Credit: Tuples implementation from https://stackoverflow.com/a/12328838
 

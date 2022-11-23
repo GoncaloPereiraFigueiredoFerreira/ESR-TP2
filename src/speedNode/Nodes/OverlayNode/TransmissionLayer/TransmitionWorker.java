@@ -1,6 +1,6 @@
 package speedNode.Nodes.OverlayNode.TransmissionLayer;
 
-import speedNode.Nodes.ProtectedQueue;
+import speedNode.Utilities.ProtectedQueue;
 import speedNode.Nodes.Tables.IClientTable;
 import speedNode.Nodes.Tables.INeighbourTable;
 import speedNode.Nodes.Tables.IRoutingTable;

@@ -1,6 +1,6 @@
 package speedNode.Nodes.Tables;
 
-import speedNode.Utils.Tuple;
+import speedNode.Utilities.Tuple;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -114,6 +114,23 @@ public class RoutingTable implements IRoutingTable{
             else {
                 return this.metricsTable.get(t).clone();
             }
+        }finally {
+            this.readWriteLockMetrics.readLock().unlock();
+        }
+    }
+
+    @Override
+    public boolean activateBestRoute() {
+        //TODO
+        return false;
+    }
+
+    @Override
+    public boolean existsInRoutingTable(String ServerIp, String Provider) {
+        try{
+            this.readWriteLockMetrics.readLock().lock();
+            Tuple<String,String> t = new Tuple<>(Provider,ServerIp);
+            return this.metricsTable.containsKey(t);
         }finally {
             this.readWriteLockMetrics.readLock().unlock();
         }

@@ -1,6 +1,6 @@
 package speedNode.Nodes.Tables;
 
-import speedNode.Utils.Tuple;
+import speedNode.Utilities.Tuple;
 
 public interface IRoutingTable {
 
@@ -48,5 +48,7 @@ public interface IRoutingTable {
 
     Tuple<Integer,Float> getMetrics(String ServerIp, String Provider);
 
+    boolean activateBestRoute();
 
+    boolean existsInRoutingTable(String ServerIp,String Provider);
 }

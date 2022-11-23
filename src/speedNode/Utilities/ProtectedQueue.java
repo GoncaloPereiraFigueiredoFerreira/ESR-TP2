@@ -1,11 +1,10 @@
-package speedNode.Nodes;
+package speedNode.Utilities;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Predicate;
 
 public class ProtectedQueue<X> {
     private final Deque<X> queue = new ArrayDeque<>();
@@ -14,9 +13,27 @@ public class ProtectedQueue<X> {
 
     public ProtectedQueue(){}
 
+    //public X popElem(){
+    //    try{
+    //        rwLock.writeLock().lock();
+    //        return queue.pop();
+    //    }finally {
+    //        rwLock.writeLock().unlock();
+    //    }
+    //}
+
     public X popElem(){
+        return popElem(true);
+    }
+
+    public X popElem(boolean await){
         try{
             rwLock.writeLock().lock();
+            while (await && this.length() == 0) {
+                // Fica bloqueado a espera de pacotes na queue
+                try { cond.await();}
+                catch (InterruptedException ignored) {}
+            }
             return queue.pop();
         }finally {
             rwLock.writeLock().unlock();
@@ -29,7 +46,7 @@ public class ProtectedQueue<X> {
             return queue.add(elem);
         }finally {
             rwLock.writeLock().unlock();
-            cond.signalAll();
+            cond.signal();
         }
     }
     public X peekHead(){
@@ -41,15 +58,29 @@ public class ProtectedQueue<X> {
         }
     }
 
+    //public void awaitPush() {
+    //    while (this.length() == 0){
+    //        // Fica bloqueado a espera de pacotes na queue
+    //        try {
+    //            cond.await();
+    //        } catch (InterruptedException ignored) {}
+    //    }
+    //}
+
     public void awaitPush() {
-        while (this.length() == 0){
-            // Fica bloqueado a espera de pacotes na queue
-            try {
-                cond.await();
-            } catch (InterruptedException ignored) {}
+        try {
+            rwLock.writeLock().lock();
+            while (this.length() == 0) {
+                // Fica bloqueado a espera de pacotes na queue
+                try {
+                    cond.await();
+                } catch (InterruptedException ignored) {
+                }
+            }
+        }finally {
+            rwLock.writeLock().unlock();
         }
     }
-
 
 
     public int length(){
