@@ -1,9 +1,7 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
-import speedNode.Utilities.ProtectedQueue;
-import speedNode.Utilities.Serialize;
+import speedNode.Utilities.*;
 import speedNode.Nodes.Tables.*;
-import speedNode.Utilities.Tags;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -15,9 +13,8 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import speedNode.Utilities.TaggedConnection.Frame;
-import speedNode.Utilities.Tuple;
 
-
+//TODO - verificar como é a situacao de um nodo ser servidor e cliente
 public class ControlWorker implements Runnable{
     //Bootstrap info
     private final String bootstrapIP;
@@ -52,11 +49,13 @@ public class ControlWorker implements Runnable{
     //Child threads will use this exception as stop flag
     private Exception exception = null;
 
-    // true when the node is for flood operations
-    private boolean ready = false;
+    // true when the (interior to the node) conditions necessary to start a flood are met
+    // only required to avoid a node that was contacted by a server, to start flooding without
+    // the start conditions being met
+    private final BoolWithLockCond readyToFlood = new BoolWithLockCond(false);
 
     // true when there is, at least one route to a server
-    private boolean readyToActivateRoutes = false;
+    private final BoolWithLockCond readyToActivateRoutes = new BoolWithLockCond(false);
 
     public ControlWorker(String bindAddress, String bootstrapIP, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.bindAddress = bindAddress;
@@ -70,24 +69,16 @@ public class ControlWorker implements Runnable{
     public void run() {
         try{
             ss = new ServerSocket(ssPort, 0, InetAddress.getByName(bindAddress));
+
             connectToBootstrap();
             requestNeighbours();
-
-            //Runs the thread responsible for accepting neighbours' connections
-            Thread acceptConnectionsThread = new Thread(() -> {
-                try { attendNewConnections(); }
-                catch (IOException e) { exception = e; }});
-            threads.add(acceptConnectionsThread);
-            acceptConnectionsThread.start();
-
+            startThreadToAttendNewConnections();
             connectToNeighbours();
-            try {
-                //Waits until the necessary conditions are fulfilled
-                checkStartConditions(); //TODO - alterar o sleep q esta funcao tem
-            } catch (InterruptedException ignored) {}
+
+            try { waitsForStartConditionsToBeMet(); }
+            catch (InterruptedException ignored) {}
 
             informReadyStateToBootstrap();
-            ready = true;
 
             while(exception != null){
                 Tuple<String,Frame> tuple = framesInputQueue.popElem();
@@ -99,14 +90,8 @@ public class ControlWorker implements Runnable{
             ioe.printStackTrace();
         }
 
-
         //Closing process
-        try { bootstrapConnection.close(); }
-        catch (IOException ignored) {}
-        for(Thread t : threads) {
-            try { t.join();}
-            catch (InterruptedException ignored) {}
-        }
+        close();
     }
 
     /* ****** Connect To Bootstrap ****** */
@@ -187,6 +172,15 @@ public class ControlWorker implements Runnable{
 
     /* ****** Attend New Connections ****** */
 
+    private void startThreadToAttendNewConnections(){
+        //Starts the thread responsible for accepting neighbours' connections
+        Thread acceptConnectionsThread = new Thread(() -> {
+            try { attendNewConnections(); }
+            catch (IOException e) { exception = e; }});
+        threads.add(acceptConnectionsThread);
+        acceptConnectionsThread.start();
+    }
+
     private void attendNewConnections() throws IOException {
         Set<Thread> childThreads = new HashSet<>();
 
@@ -216,6 +210,11 @@ public class ControlWorker implements Runnable{
             t.start();
             childThreads.add(t);
         }
+
+        for(Thread t : childThreads) {
+            try { t.join();}
+            catch (InterruptedException ignored) {}
+        }
     }
 
     private void acceptNeighbourConnection(String neighbour, TaggedConnection tc) throws IOException{
@@ -242,27 +241,26 @@ public class ControlWorker implements Runnable{
 
     }
 
-    //TODO - acabar depois de fazer flood
     private void acceptNewClient(String client, TaggedConnection tc) throws IOException {
+        //Adds client to clients' table
         this.clientTable.addNewClient(client);
+        //Sends frame informing the acceptance of the client //TODO - verificar palavra-passe para seguranca
         tc.send(0, Tags.CONNECT_AS_CLIENT_EXCHANGE, new byte[]{});
 
-        while(!readyToActivateRoutes){
-            try {
-                //TODO - talvez substituir sleep por await de uma condition
-                Thread.sleep(200);
-            } catch (InterruptedException e) {
-                System.out.println("Interrupted (activate best route)");
-                return;
-            }
+        try {
+            //Awaits until a valid route is available
+            readyToActivateRoutes.awaitForValue(true);
+        } catch (InterruptedException e) {
+            //If the thread is interrupted, informs the client that it won't be receiving the stream
+            tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
+            clientTable.removeClient(client);
+            return;
         }
 
+        //Activates the best route available
         activateBestRoute();
-        //true -> adicionar á tabela dos clientes
-        //pedir para criar rotas ate servidores
     }
 
-    //TODO - acabar depois de fazer flood
     private void acceptNewServer(String server, TaggedConnection tc){
         //true -> adicionar à tabela dos servidores
         //informar bootstrap q é servidor
@@ -270,7 +268,7 @@ public class ControlWorker implements Runnable{
             //Acknowledge server
             tc.send(0, Tags.CONNECT_AS_SERVER_EXCHANGE, new byte[]{});
 
-            //Request permission to flood
+            //Request bootstrap for the permission to flood
             bootstrapConnection.send(0, Tags.FLOOD_PERMISSION_EXCHANGE, new byte[]{});
 
             //Receives response from bootstrap
@@ -279,32 +277,30 @@ public class ControlWorker implements Runnable{
             //Checks the tag
             if(frame.getTag() == Tags.FLOOD_PERMISSION_EXCHANGE){
                 boolean answer = Serialize.deserializeBoolean(frame.getData());
-                if(answer) {
-                    tc.send(0, Tags.REQUEST_STREAM, new byte[]{});
 
-                    while (!ready){
-                        try {
-                            //TODO - talvez substituir sleep por await de uma condition
-                            Thread.sleep(200);
-                        } catch (InterruptedException e) {
-                            System.out.println("Interrupted (flood)");
-                            return;
-                        }
+                // If the answer is affirmative, floods  requests the stream
+                if(answer) {
+                    // Waits for the node to be ready to start the flood
+                    try { readyToFlood.awaitForValue(true); }
+                    catch (InterruptedException e) {
+                        tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
+                        return;
                     }
 
+                    //Registers server in clients table
                     this.clientTable.addNewServer(server);
+                    //Starts a flood to inform the rest of the overlay's nodes of the existence of the new server
                     startFlood(server);
-                }
-                else {
-                    // If the answer is not affirmative, cancels the stream
-                    tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
+
+                    //Requests the stream (maybe it shouldn't be requested until, at least, a client requests it)
+                    tc.send(0, Tags.REQUEST_STREAM, new byte[]{});
+                    return;
                 }
             }
-            else {
-                //If the tag does not match "FLOOD_PERMISSION_EXCHANGE", then cancels the stream
-                tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
-                return;
-            }
+
+            // If the tag does not match "FLOOD_PERMISSION_EXCHANGE"
+            // or if the answer is not affirmative, cancels the stream
+            tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
 
         }catch (IOException ignored){}
     }
@@ -325,6 +321,7 @@ public class ControlWorker implements Runnable{
         threads.add(t);
     }
 
+    //TODO - passar para uma classe externa
     class ConnectionHandler implements Runnable {
         private final String neighbour;
         private TaggedConnection connection;
@@ -352,9 +349,7 @@ public class ControlWorker implements Runnable{
 
         public TaggedConnection getTaggedConnection() { return connection; }
         public void setTaggedConnection(TaggedConnection connection) { this.connection = connection; }
-        public boolean isKeepRunning() { return keepRunning; }
-        public void setKeepRunning(boolean keepRunning) { this.keepRunning = keepRunning; }
-
+        public boolean isRunning() { return keepRunning; }
 
         public void close() {
             keepRunning = false;
@@ -366,7 +361,8 @@ public class ControlWorker implements Runnable{
 
     /* ****** Check Necessary Conditions to Start ****** */
 
-    private void checkStartConditions() throws InterruptedException {
+    //Waits until the necessary conditions are fulfilled
+    private void waitsForStartConditionsToBeMet() throws InterruptedException {
         boolean allReady = false;
         var neighbours = neighbourTable.getNeighbours();
 
@@ -387,6 +383,7 @@ public class ControlWorker implements Runnable{
     private void informReadyStateToBootstrap() throws IOException {
         //Informs bootstrap that the node is ready
         bootstrapConnection.send(0, Tags.INFORM_READY_STATE, new byte[]{});
+        readyToFlood.setAndSignalAll(true);
     }
 
 
@@ -449,18 +446,19 @@ public class ControlWorker implements Runnable{
     private void handleFloodFrame(String ip, Frame frame) throws IOException{
         //Deserialize frame data
         var previous_msg = Serialize.deserializeListOfStrings(frame.getData());
-
-        //inserting a server path to Routing Table
         String serverIp = previous_msg.get(0);
         int Jumps = Integer.parseInt(previous_msg.get(1)) + 1;
         float Time = System.currentTimeMillis() - Long.parseLong(previous_msg.get(2));
-        routingTable.addServerPath(serverIp, ip, Jumps, Time, false);
 
         //Registering the node that sent the frame, in order to avoid spreading the flood back to the node it came from
         int floodIndex = frame.getNumber();
         boolean validFlood = floodControl.receivedFlood(serverIp, ip, floodIndex);
 
         if(validFlood) {
+            //inserting a server path to Routing Table
+            routingTable.addServerPath(serverIp, ip, Jumps, Time, false);
+            //signals all threads waiting to activate a route
+            readyToActivateRoutes.setAndSignalAll(true);
 
             //Get nodes that already got the flood frame
             var floodedNodes = floodControl.floodedNodes(serverIp);
@@ -494,6 +492,23 @@ public class ControlWorker implements Runnable{
                 }
 
             }finally { connectionsLock.unlock(); }
+        }
+    }
+
+    /* ****** Close graciously ****** */
+    //TODO - Close graciously method
+    private void close(){
+        try { bootstrapConnection.close(); }
+        catch (IOException ignored) {}
+
+        try {
+            for (ConnectionHandler ch : connectionsMap.values())
+                ch.close();
+        }finally { connectionsLock.unlock(); }
+
+        for(Thread t : threads) {
+            try { t.join();}
+            catch (InterruptedException ignored) {}
         }
     }
 }
