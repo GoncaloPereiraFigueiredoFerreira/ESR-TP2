@@ -37,10 +37,9 @@ public interface IRoutingTable {
      * Updates the active state of a connection
      * @param ServerIp The ip for the streaming server
      * @param Provider The ip of the neighbour node that transmits the stream
-     * @param activate Flag that indicates if the connection should be active or not
      * @return Returns true if the state was correctly updated
      */
-    boolean updateActiveState(String ServerIp,String Provider, boolean activate);
+    boolean activateRoute(String ServerIp, String Provider);
 
 
     boolean isRouteActive(String ServerIp, String Provider);

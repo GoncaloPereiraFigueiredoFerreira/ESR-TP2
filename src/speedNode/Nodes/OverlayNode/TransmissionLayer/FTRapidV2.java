@@ -2,10 +2,13 @@ package speedNode.Nodes.OverlayNode.TransmissionLayer;
 
 import speedNode.Utilities.Serialize;
 
+import java.beans.Encoder;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.Base64;
+
 
 public class FTRapidV2 {
     static int HEADER_SIZE = 28;
@@ -68,7 +71,7 @@ public class FTRapidV2 {
         assert this.Jumps !=0;
 
         this.header = Arrays.copyOfRange(ftrapidV2,0,HEADER_SIZE);
-        this.payload = Arrays.copyOfRange(ftrapidV2,HEADER_SIZE,ftrapid_length);
+        this.payload = this.encryptMessage(Arrays.copyOfRange(ftrapidV2,HEADER_SIZE,ftrapid_length));
         this.payload_size = ftrapid_length-HEADER_SIZE;
     }
 
@@ -83,7 +86,7 @@ public class FTRapidV2 {
     }
 
     public byte[] getPayload() {
-        return payload;
+        return this.decryptMessage(payload);
     }
     public int getPayloadLength() {
         return payload_size;
@@ -110,4 +113,15 @@ public class FTRapidV2 {
     public long getInitialTimeSt() {
         return InitialTimeSt;
     }
+
+    public byte[] encryptMessage(byte[] message) {
+        Base64.Encoder e = Base64.getEncoder();
+        return e.encode(message);
+    }
+
+    public byte[] decryptMessage(byte[] message){
+        Base64.Decoder e = Base64.getDecoder();
+        return e.decode(message);
+    }
+
 }

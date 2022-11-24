@@ -2,10 +2,7 @@ package speedNode.Nodes.Tables;
 
 import speedNode.Utilities.Tuple;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -75,13 +72,15 @@ public class RoutingTable implements IRoutingTable{
     }
 
     @Override
-    public boolean updateActiveState(String ServerIp, String Provider, boolean activate) {
+    public boolean activateRoute(String ServerIp, String Provider) {
         Tuple<String, String> temp = new Tuple<>(Provider, ServerIp);
         try {
             readWriteLockActive.writeLock().lock();
             if (!this.activeRoute.containsKey(temp)) return false;
             else{
-                this.activeRoute.replace(temp,activate);
+                Tuple<String,String> activeRoute = this.getActiveRoute();
+                this.activeRoute.replace(activeRoute,false);
+                this.activeRoute.replace(temp,true);
                 return true;
             }
 
@@ -97,7 +96,6 @@ public class RoutingTable implements IRoutingTable{
             Tuple<String,String> t = new Tuple<>(Provider,ServerIp);
             if (!this.activeRoute.containsKey(t)) return false;
             else {
-
                 return this.activeRoute.get(t);
             }
         }finally {
@@ -119,11 +117,41 @@ public class RoutingTable implements IRoutingTable{
         }
     }
 
+    public Tuple<String,String> getActiveRoute(){
+        try{
+            this.readWriteLockActive.readLock().unlock();
+            Tuple<String,String> bestRoute = null;
+            for (Map.Entry<Tuple<String,String>,Boolean> entry : this.activeRoute.entrySet()){
+                if (entry.getValue()) bestRoute = entry.getKey().clone();
+            }
+            assert bestRoute!=null; //Assert para ter a certeza que existe sempre pelo menos uma rota ativa
+            return bestRoute;
+        }finally {
+            this.readWriteLockActive.readLock().unlock();
+        }
+    }
+
     @Override
     public boolean activateBestRoute() {
-        //TODO
-        return false;
+        try{
+            this.readWriteLockMetrics.readLock().lock();
+            float wiggleRoom = 0.05f;
+            float score;
+            float minScore = Float.MAX_VALUE;
+            Tuple<String,String> bestRoute = getActiveRoute();
+            for (Map.Entry<Tuple<String,String>,Tuple<Integer,Float>> entry : this.metricsTable.entrySet()){
+                score = entry.getValue().snd + (entry.getValue().fst * wiggleRoom);
+                if (score < minScore) {
+                    minScore= score;
+                    bestRoute = entry.getKey();
+                }
+            }
+            return activateRoute(bestRoute.fst,bestRoute.snd);
+        }finally {
+            this.readWriteLockMetrics.readLock().unlock();
+        }
     }
+
 
     @Override
     public boolean existsInRoutingTable(String ServerIp, String Provider) {
