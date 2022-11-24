@@ -47,7 +47,9 @@ public class ControlWorker implements Runnable{
     private final Set<Thread> threads = new HashSet<>();
 
     // To keep track of the neighbours that were sent the flood msg
-    private List<String> floodSent = new ArrayList<>();
+    //Servidores diferentes
+    private Set<Tuple<String,String>> floodSent = new HashSet<>();
+    private Set<Tuple<String,String>> floodReceived = new HashSet<>();
 
     //Child threads will use this exception as stop flag
     private Exception exception = null;
@@ -264,7 +266,7 @@ public class ControlWorker implements Runnable{
 
     //TODO - acabar depois de fazer flood
     private void acceptNewServer(String server, TaggedConnection tc){
-        //true -> adicionar á tabela dos servidores
+        //true -> adicionar à tabela dos servidores
         //informar bootstrap q é servidor
         try{
             //Acknowledge server
@@ -348,6 +350,7 @@ public class ControlWorker implements Runnable{
                     framesInputQueue.pushElem(new Tuple<>(neighbour, frame));
             }
         }
+        //TODO- Eliminar rotas quando a conexão termina
 
         public TaggedConnection getTaggedConnection() { return connection; }
         public void setTaggedConnection(TaggedConnection connection) { this.connection = connection; }
@@ -451,10 +454,13 @@ public class ControlWorker implements Runnable{
         String ServerIp=previous_msg.get(0);
         int Jumps = Integer.parseInt(previous_msg.get(1)) + 1;
         float Time = System.currentTimeMillis()-Long.parseLong(previous_msg.get(2));
-        this.routingTable.addServerPath(ServerIp,ip,Jumps,Time,false);
+        routingTable.addServerPath(ServerIp,ip,Jumps,Time,false);
+        floodReceived.add(new Tuple<>(ServerIp,ip));
 
         for(ConnectionHandler ch : connectionsMap.values()){
-            if( !this.routingTable.existsInRoutingTable(ServerIp,ch.neighbour) && !floodSent.contains(ch.neighbour) ){
+
+            if( !floodReceived.contains(new Tuple<>(ServerIp,ch.neighbour))
+             && !floodSent.contains(new Tuple<>(ServerIp,ch.neighbour))){
 
                 TaggedConnection tc = ch.getTaggedConnection();
 
@@ -464,7 +470,7 @@ public class ControlWorker implements Runnable{
                 msg_flood.add(previous_msg.get(2));
 
                 tc.send(0,Tags.FLOOD,Serialize.serializeListOfStrings(msg_flood));
-                floodSent.add(ch.neighbour);
+                floodSent.add(new Tuple<>(ServerIp,ch.neighbour));
 
             }
         }
