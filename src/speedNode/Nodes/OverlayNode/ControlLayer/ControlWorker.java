@@ -47,9 +47,7 @@ public class ControlWorker implements Runnable{
     private final Set<Thread> threads = new HashSet<>();
 
     // To keep track of the neighbours that were sent the flood msg
-    //Servidores diferentes
-    private Set<Tuple<String,String>> floodSent = new HashSet<>();
-    private Set<Tuple<String,String>> floodReceived = new HashSet<>();
+    private final FloodControl floodControl = new FloodControl();
 
     //Child threads will use this exception as stop flag
     private Exception exception = null;
@@ -407,15 +405,13 @@ public class ControlWorker implements Runnable{
     /* ****** Flood ****** */
 
     /* *** PAYLOAD ***
-        Composed by:
-            -> server that triggered the flood
-            -> number of jumps between overlay nodes
-            -> timestamp of the start of the flood
-
+     *  Composed by:
+     *      -> server that triggered the flood
+     *      -> number of jumps between overlay nodes
+     *      -> timestamp of the start of the flood
      */
 
-    //TODO - fazer flood
-    private void startFlood(String server) throws IOException{
+    private void startFlood(String server){
         for(ConnectionHandler ch : connectionsMap.values()){
             TaggedConnection tc = ch.getTaggedConnection();
 
@@ -426,7 +422,10 @@ public class ControlWorker implements Runnable{
             String time = Long.toString(System.currentTimeMillis());
             msg_flood.add(time); // timestamp of the start of the flood
 
-            tc.send(0,Tags.FLOOD,Serialize.serializeListOfStrings(msg_flood));
+            try {
+                tc.send(0, Tags.FLOOD, Serialize.serializeListOfStrings(msg_flood));
+                floodControl.sentFlood(server, tc.getHost(), 0); //Registers the ip of the neighbour to avoid a repetitive send
+            }catch (Exception ignored){}
         }
     }
 
@@ -447,32 +446,54 @@ public class ControlWorker implements Runnable{
         }
     }
 
-    private void handleFloodFrame(String ip,Frame frame) throws IOException{
+    private void handleFloodFrame(String ip, Frame frame) throws IOException{
+        //Deserialize frame data
         var previous_msg = Serialize.deserializeListOfStrings(frame.getData());
 
         //inserting a server path to Routing Table
-        String ServerIp=previous_msg.get(0);
+        String serverIp = previous_msg.get(0);
         int Jumps = Integer.parseInt(previous_msg.get(1)) + 1;
-        float Time = System.currentTimeMillis()-Long.parseLong(previous_msg.get(2));
-        routingTable.addServerPath(ServerIp,ip,Jumps,Time,false);
-        floodReceived.add(new Tuple<>(ServerIp,ip));
+        float Time = System.currentTimeMillis() - Long.parseLong(previous_msg.get(2));
+        routingTable.addServerPath(serverIp, ip, Jumps, Time, false);
 
-        for(ConnectionHandler ch : connectionsMap.values()){
+        //Registering the node that sent the frame, in order to avoid spreading the flood back to the node it came from
+        int floodIndex = frame.getNumber();
+        boolean validFlood = floodControl.receivedFlood(serverIp, ip, floodIndex);
 
-            if( !floodReceived.contains(new Tuple<>(ServerIp,ch.neighbour))
-             && !floodSent.contains(new Tuple<>(ServerIp,ch.neighbour))){
+        if(validFlood) {
 
-                TaggedConnection tc = ch.getTaggedConnection();
+            //Get nodes that already got the flood frame
+            var floodedNodes = floodControl.floodedNodes(serverIp);
 
-                List<String> msg_flood = new ArrayList<>();
-                msg_flood.add(ServerIp);
-                msg_flood.add(Integer.toString(Jumps));
-                msg_flood.add(previous_msg.get(2));
+            try {
+                connectionsLock.lock();
 
-                tc.send(0,Tags.FLOOD,Serialize.serializeListOfStrings(msg_flood));
-                floodSent.add(new Tuple<>(ServerIp,ch.neighbour));
+                //Get the connection handlers of the nodes that did not get flood frame
+                var chs = connectionsMap.entrySet()
+                                                                          .stream()
+                                                                          .filter(e -> !floodedNodes.contains(e.getKey()))
+                                                                          .map(Map.Entry::getValue)
+                                                                          .collect(Collectors.toList());
 
-            }
+                //Sends the flood frame to every node that has not been flooded
+                for (ConnectionHandler ch : chs) {
+                    TaggedConnection tc = ch.getTaggedConnection();
+
+                    //Creates the frame data
+                    List<String> msg_flood = new ArrayList<>();
+                    msg_flood.add(serverIp);
+                    msg_flood.add(Integer.toString(Jumps));
+                    msg_flood.add(previous_msg.get(2));
+                    byte[] data = Serialize.serializeListOfStrings(msg_flood);
+
+                    //Sends the frame to the neighbour
+                    tc.send(floodIndex, Tags.FLOOD, data);
+
+                    //Registers that the neighbour has received the flood frame
+                    floodControl.sentFlood(serverIp, tc.getHost(), floodIndex);
+                }
+
+            }finally { connectionsLock.unlock(); }
         }
     }
 }
