@@ -42,20 +42,18 @@ public class TaggedConnection implements AutoCloseable {
     /**
      * Recebe frame do socket referente a esta conexão
      * @return Frame recebido
+     * @throws SocketTimeoutException
+     * @throws IOException
      */
-    public Frame receive() throws IOException {
+    public Frame receive() throws SocketTimeoutException,IOException {
         int number, tag, dataSize;
         byte[] data;
 
-        try{
-            number   = dis.readInt();
-            tag      = dis.readInt();
-            dataSize = dis.readInt();
-            data     = new byte[dataSize];
-            dis.readFully(data);
-        } catch (SocketTimeoutException ste){
-            return null;
-        }
+        number   = dis.readInt();
+        tag      = dis.readInt();
+        dataSize = dis.readInt();
+        data     = new byte[dataSize];
+        dis.readFully(data);
 
         return new Frame(number, tag, data);
     }
@@ -75,5 +73,7 @@ public class TaggedConnection implements AutoCloseable {
         else
             return null;
     }
+
+    public Socket getSocket() { return socket; }
 }
 

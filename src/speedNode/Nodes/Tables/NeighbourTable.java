@@ -13,7 +13,7 @@ public class NeighbourTable implements INeighbourTable{
     /**
      * Table that contains the columns:
      *
-     *     IP of the neighbour    |   Flag: Is it active      |   Flag: Does it want the stream  |     Timestamp of last jump
+     *     IP of the neighbour    |   Flag: Is it connected   |   Flag: Does it want the stream  |     Timestamp of last jump
      *
      */
     private final HashMap<String, Tuple<Boolean,Boolean>> Neighbours = new HashMap<>();
@@ -70,11 +70,11 @@ public class NeighbourTable implements INeighbourTable{
     }
 
     @Override
-    public boolean isActive(String ip) {
+    public boolean wantStream(String ip) {
         try {
             neighboursLock.readLock().lock();
             if (!this.Neighbours.containsKey(ip)) return false;
-            else return this.Neighbours.get(ip).fst;
+            else return this.Neighbours.get(ip).snd;
         }finally {
             neighboursLock.readLock().unlock();
         }
@@ -85,7 +85,7 @@ public class NeighbourTable implements INeighbourTable{
         try {
             neighboursLock.readLock().lock();
             if (!this.Neighbours.containsKey(ip)) return false;
-            else return this.Neighbours.get(ip).snd;
+            else return this.Neighbours.get(ip).fst;
         }finally {
             neighboursLock.readLock().unlock();
         }
@@ -109,7 +109,7 @@ public class NeighbourTable implements INeighbourTable{
     }
 
     @Override
-    public boolean updateActiveState(String ip, boolean activate) {
+    public boolean updateWantsStream(String ip, boolean activate) {
         try {
             neighboursLock.writeLock().lock();
             if (!this.Neighbours.containsKey(ip)) return false;
@@ -126,7 +126,7 @@ public class NeighbourTable implements INeighbourTable{
     }
 
     @Override
-    public List<String> getConnectedNeighbours(){
+    public List<String> getNeighboursWantingStream(){
         ArrayList<String> lst = new ArrayList<>();
         try {
             neighboursLock.readLock().lock();

@@ -3,6 +3,7 @@ package speedNode.Nodes.Bootstrap;
 import speedNode.Utilities.Serialize;
 import speedNode.Utilities.TaggedConnection.Frame;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
+import speedNode.Utilities.Tags;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -17,9 +18,11 @@ public class BootstrapWorker implements Runnable{
     /*
         | TAG | DESCRIPTION
         |-----+------------------
-        |  1  | Response to the request "Get Neighbours"
+        |  1  | Request to the request "Get Neighbours"
         |-----+-----------------
-        |  5  | Indicates that can start flooding
+        |  4  | Indicates to the bootstrap that the node is ready (connected to all neighbours)
+        |-----+-----------------
+        |  7  | Indicates to the bootstrap that a server has connected to the node
     */
 
     public BootstrapWorker(BootstrapSharedInfo sharedInfo, Socket socket) throws IOException {
@@ -35,21 +38,20 @@ public class BootstrapWorker implements Runnable{
             Frame frame = connection.receive();
             System.out.println("Received with number:" + frame.getNumber() + " | tag: " + frame.getTag() + " | content: " + Arrays.toString(frame.getData()));
 
-            // Mais tarde pode ser um switch quando tiver mais opcoes
             switch (frame.getTag()) {
-                case 1:
+                case Tags.REQUEST_NEIGHBOURS_EXCHANGE:
                     sendNeighbours(frame);
                     break;
-                case 2:
-                    /*
-                    //If the node is a server, then awaits to send message granting permission to flood
-                    boolean isServer = Serialize.deserializeBoolean(frame.getData());
-                    if(isServer){
-                        sharedInfo.canStartFlood();
-                        connection.send(0, 5, new byte[]{});
-                    }
-                    */
+
+                case Tags.INFORM_READY_STATE:
+                    // Frame telling the bootstrap that the node is ready
+                    sharedInfo.addContactedNode(socket.getInetAddress().getHostAddress());
                     break;
+
+                case Tags.FLOOD_PERMISSION_EXCHANGE:
+                    // Frame telling bootstrap that the node is a server
+                    sharedInfo.canStartFlood();
+                    connection.send(new Frame(0,Tags.FLOOD_PERMISSION_EXCHANGE,new byte[]{}));
             }
 
             socket.close();

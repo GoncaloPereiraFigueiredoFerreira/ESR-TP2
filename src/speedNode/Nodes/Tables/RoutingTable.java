@@ -121,10 +121,9 @@ public class RoutingTable implements IRoutingTable{
         try{
             this.readWriteLockActive.readLock().unlock();
             Tuple<String,String> bestRoute = null;
-            for (Map.Entry<Tuple<String,String>,Boolean> entry : this.activeRoute.entrySet()){
+            for (Map.Entry<Tuple<String,String>,Boolean> entry : this.activeRoute.entrySet()) {
                 if (entry.getValue()) bestRoute = entry.getKey().clone();
             }
-            assert bestRoute!=null; //Assert para ter a certeza que existe sempre pelo menos uma rota ativa
             return bestRoute;
         }finally {
             this.readWriteLockActive.readLock().unlock();
@@ -138,7 +137,8 @@ public class RoutingTable implements IRoutingTable{
             float wiggleRoom = 0.05f;
             float score;
             float minScore = Float.MAX_VALUE;
-            Tuple<String,String> bestRoute = getActiveRoute();
+            Tuple<String,String> bestRoute =null;
+
             for (Map.Entry<Tuple<String,String>,Tuple<Integer,Float>> entry : this.metricsTable.entrySet()){
                 score = entry.getValue().snd + (entry.getValue().fst * wiggleRoom);
                 if (score < minScore) {
@@ -146,6 +146,8 @@ public class RoutingTable implements IRoutingTable{
                     bestRoute = entry.getKey();
                 }
             }
+
+            assert bestRoute != null;
             return activateRoute(bestRoute.fst,bestRoute.snd);
         }finally {
             this.readWriteLockMetrics.readLock().unlock();

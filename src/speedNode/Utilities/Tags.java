@@ -15,4 +15,5 @@ public class Tags {
     public final static int ACTIVATE_ROUTE = 12;
     public final static int DEACTIVATE_ROUTE = 13;
     public final static int UPDATE_ROUTING_TABLE = 14;
+    public final static int CLOSE_CONNECTION = 15;
 }

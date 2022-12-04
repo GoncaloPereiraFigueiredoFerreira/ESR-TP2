@@ -37,7 +37,7 @@ public interface INeighbourTable {
      * @param ip Ip of neighbour
      * @return Returns true if the neighbour is active, or false otherwise
      */
-    boolean isActive(String ip);
+    boolean wantStream(String ip);
 
     /**
      * Returns true if the neighbour is receiving a stream through the current node
@@ -61,14 +61,14 @@ public interface INeighbourTable {
      * @param activate Flag to which the state should be set to
      * @return Returns true if the operation was sucessful, or false otherwise
      */
-    boolean updateActiveState(String ip,boolean activate);
+    boolean updateWantsStream(String ip, boolean activate);
 
 
     /**
      * Returns the list of neighbours that wish to receive the stream
      * @return Returns the list of neighbours that wish to receive the stream
      */
-    List<String> getConnectedNeighbours();
+    List<String> getNeighboursWantingStream();
 
     /**
      * Updates the jump time to a certain neighbour

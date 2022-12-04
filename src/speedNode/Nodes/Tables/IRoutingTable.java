@@ -47,6 +47,8 @@ public interface IRoutingTable {
 
     Tuple<Integer,Float> getMetrics(String ServerIp, String Provider);
 
+    public Tuple<String,String> getActiveRoute();
+
     boolean activateBestRoute();
 
     boolean existsInRoutingTable(String ServerIp,String Provider);

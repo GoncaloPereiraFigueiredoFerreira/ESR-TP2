@@ -38,6 +38,7 @@ public class ControlWorker implements Runnable{
     private final ReentrantLock connectionsLock = new ReentrantLock();
 
     // Queue with frames to be handled by the main control thread
+    // Tuple : (ip of who sent the frame, frame)
     private final ProtectedQueue<Tuple<String,Frame>> framesInputQueue = new ProtectedQueue<>();
 
     // To keep track of the threads that need to join the main thread when terminating the program
@@ -48,11 +49,6 @@ public class ControlWorker implements Runnable{
 
     //Child threads will use this exception as stop flag
     private Exception exception = null;
-
-    // true when the (interior to the node) conditions necessary to start a flood are met
-    // only required to avoid a node that was contacted by a server, to start flooding without
-    // the start conditions being met
-    private final BoolWithLockCond readyToFlood = new BoolWithLockCond(false);
 
     // true when there is, at least one route to a server
     private final BoolWithLockCond readyToActivateRoutes = new BoolWithLockCond(false);
@@ -81,6 +77,18 @@ public class ControlWorker implements Runnable{
             informReadyStateToBootstrap();
 
             while(exception != null){
+                // TODO - (executar isto noutro lado ou diminuir a frequencia com que executa de alguma forma)
+                //Removes connectionHandlers that are no longer in use
+                try {
+                    connectionsLock.lock();
+                    for (Map.Entry<String, ConnectionHandler> entry : connectionsMap.entrySet())
+                        if(!entry.getValue().isRunning())
+                            connectionsMap.remove(entry.getKey());
+                }finally { connectionsLock.unlock(); }
+
+                //Remove dead threads
+                threads.removeIf(t -> !t.isAlive());
+
                 Tuple<String,Frame> tuple = framesInputQueue.popElem();
                 handleFrame(tuple.fst, tuple.snd);
             }
@@ -152,6 +160,7 @@ public class ControlWorker implements Runnable{
             if(Serialize.deserializeBoolean(frame.getData())){
                 try{
                     connectionsLock.lock();
+
                     //Only adds the connection if there isn't already a connection
                     //Or in case there is, if the neighbours IP is lexically inferior
                     ConnectionHandler ch = connectionsMap.get(neighbour);
@@ -161,7 +170,10 @@ public class ControlWorker implements Runnable{
                         ch.close();
                         initiateNeighbourConnectionReceiver(neighbour, tc);
                     }
-                    else s.close();
+                    else {s.close(); return;}
+
+                    //Declare neighbour as connected
+                    neighbourTable.updateConnectionNeighbour(neighbour, true);
                 }finally{connectionsLock.unlock();}
             }
             else s.close();
@@ -262,8 +274,6 @@ public class ControlWorker implements Runnable{
     }
 
     private void acceptNewServer(String server, TaggedConnection tc){
-        //true -> adicionar à tabela dos servidores
-        //informar bootstrap q é servidor
         try{
             //Acknowledge server
             tc.send(0, Tags.CONNECT_AS_SERVER_EXCHANGE, new byte[]{});
@@ -275,32 +285,21 @@ public class ControlWorker implements Runnable{
             Frame frame = bootstrapConnection.receive();
 
             //Checks the tag
-            if(frame.getTag() == Tags.FLOOD_PERMISSION_EXCHANGE){
-                boolean answer = Serialize.deserializeBoolean(frame.getData());
+            if(frame.getTag() == Tags.FLOOD_PERMISSION_EXCHANGE) {
+                //Registers server in clients table
+                this.clientTable.addNewServer(server);
 
-                // If the answer is affirmative, floods  requests the stream
-                if(answer) {
-                    // Waits for the node to be ready to start the flood
-                    try { readyToFlood.awaitForValue(true); }
-                    catch (InterruptedException e) {
-                        tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
-                        return;
-                    }
+                //Starts a flood to inform the rest of the overlay's nodes of the existence of the new server
+                startFlood(server);
 
-                    //Registers server in clients table
-                    this.clientTable.addNewServer(server);
-                    //Starts a flood to inform the rest of the overlay's nodes of the existence of the new server
-                    startFlood(server);
-
-                    //Requests the stream (maybe it shouldn't be requested until, at least, a client requests it)
-                    tc.send(0, Tags.REQUEST_STREAM, new byte[]{});
-                    return;
-                }
+                //Requests the stream (maybe it shouldn't be requested until, at least, a client requests it)
+                tc.send(0, Tags.REQUEST_STREAM, new byte[]{});
+                return;
+            }else {
+                // If the tag does not match "FLOOD_PERMISSION_EXCHANGE"
+                // or if the answer is not affirmative, cancels the stream
+                tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
             }
-
-            // If the tag does not match "FLOOD_PERMISSION_EXCHANGE"
-            // or if the answer is not affirmative, cancels the stream
-            tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
 
         }catch (IOException ignored){}
     }
@@ -308,56 +307,18 @@ public class ControlWorker implements Runnable{
     /* ****** Initiate Neighbour Connections Receivers ****** */
 
     private void initiateNeighbourConnectionReceiver(String neighbour, TaggedConnection tc){
-        ConnectionHandler ch = new ConnectionHandler(neighbour, tc);
+        ConnectionHandler ch = new ConnectionHandler(neighbour, tc, framesInputQueue);
         try {
             connectionsLock.lock();
             if(connectionsMap.containsKey(neighbour)) return;
             connectionsMap.put(neighbour, ch);
-            neighbourTable.updateActiveState(neighbour,true);
+            neighbourTable.updateWantsStream(neighbour,true);
         }finally { connectionsLock.unlock(); }
 
         Thread t = new Thread(ch);
         t.start();
         threads.add(t);
     }
-
-    //TODO - passar para uma classe externa
-    class ConnectionHandler implements Runnable {
-        private final String neighbour;
-        private TaggedConnection connection;
-        private boolean keepRunning = true;
-
-        public ConnectionHandler(String neighbour, TaggedConnection connection) {
-            this.connection = connection;
-            this.neighbour = neighbour;
-        }
-
-        public void run() {
-            while (keepRunning && exception == null) { //TODO - acrescentar condicao de encerramento gracioso
-                Frame frame = null;
-
-                //TODO - Verifications can be done here
-                try { frame = connection.receive(); }
-                catch (IOException ignored) {}
-
-                //Inserts frame in queue
-                if (frame != null)
-                    framesInputQueue.pushElem(new Tuple<>(neighbour, frame));
-            }
-        }
-        //TODO- Eliminar rotas quando a conexão termina
-
-        public TaggedConnection getTaggedConnection() { return connection; }
-        public void setTaggedConnection(TaggedConnection connection) { this.connection = connection; }
-        public boolean isRunning() { return keepRunning; }
-
-        public void close() {
-            keepRunning = false;
-            try { connection.close();}
-            catch (Exception ignored){}
-        }
-    }
-
 
     /* ****** Check Necessary Conditions to Start ****** */
 
@@ -370,7 +331,7 @@ public class ControlWorker implements Runnable{
             allReady = true;
 
             for(int i = 0; i < neighbours.size() && allReady; i++)
-                if(!neighbourTable.isActive(neighbours.get(i)))
+                if(!neighbourTable.wantStream(neighbours.get(i)))
                     allReady = false;
 
             //TODO - substituir por metodo da NeighboursTable que aguarda que todos os neighbours estejam prontos
@@ -383,15 +344,23 @@ public class ControlWorker implements Runnable{
     private void informReadyStateToBootstrap() throws IOException {
         //Informs bootstrap that the node is ready
         bootstrapConnection.send(0, Tags.INFORM_READY_STATE, new byte[]{});
-        readyToFlood.setAndSignalAll(true);
     }
 
 
     /* ****** Activate best route ****** */
 
     //TODO - acabar activateBestRoute
-    private void activateBestRoute() {
+    private void activateBestRoute() throws IOException{
+
+        var oldProvidingIP = routingTable.getActiveRoute().snd;
         routingTable.activateBestRoute();
+        var newProvidingIP = routingTable.getActiveRoute().snd;
+        if(oldProvidingIP!=null && !Objects.equals(oldProvidingIP, newProvidingIP) ){
+            connectionsMap.get(newProvidingIP).getTaggedConnection().send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
+            connectionsMap.get(oldProvidingIP).getTaggedConnection().send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
+        }
+        else connectionsMap.get(newProvidingIP).getTaggedConnection().send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
+
         //Se a rota mudou
         //  -> Contactar novo vizinho e cancelar rota antiga (se existir)
         //Else
@@ -435,8 +404,8 @@ public class ControlWorker implements Runnable{
         try {
             switch (frame.getTag()){
                 case Tags.FLOOD -> handleFloodFrame(ip,frame);
-                //case Tags.ACTIVATE_ROUTE -> handleActivateRoute(frame);
-                //case Tags.DEACTIVATE_ROUTE -> handleDeactivateRoute(frame);
+                case Tags.ACTIVATE_ROUTE -> handleActivateRoute(ip);
+                case Tags.DEACTIVATE_ROUTE -> handleDeactivateRoute(ip);
             }
         }catch (Exception e){
             e.printStackTrace();
@@ -495,6 +464,20 @@ public class ControlWorker implements Runnable{
         }
     }
 
+    private void handleActivateRoute(String ip) throws IOException{
+
+        this.neighbourTable.updateWantsStream(ip,true);
+        activateBestRoute();
+    }
+
+    private void handleDeactivateRoute(String ip) throws IOException{
+        this.neighbourTable.updateWantsStream(ip,false);
+        if(this.neighbourTable.getNeighboursWantingStream().size() == 0){
+            var oldProvidingIP = routingTable.getActiveRoute().snd;
+            connectionsMap.get(oldProvidingIP).getTaggedConnection().send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
+        }
+    }
+
     /* ****** Close graciously ****** */
     //TODO - Close graciously method
     private void close(){
@@ -506,9 +489,21 @@ public class ControlWorker implements Runnable{
                 ch.close();
         }finally { connectionsLock.unlock(); }
 
+        interruptAndJoinThreads(this.threads);
+    }
+
+    private static void interruptAndJoinThreads(Collection<Thread> threads){
+        //Interrupts threads that are running
+        for(Thread t : threads)
+            if(t.isAlive() && !t.isInterrupted())
+                t.interrupt();
+
+        //Waits for threads to stop running and join them
         for(Thread t : threads) {
             try { t.join();}
             catch (InterruptedException ignored) {}
         }
     }
+
+
 }

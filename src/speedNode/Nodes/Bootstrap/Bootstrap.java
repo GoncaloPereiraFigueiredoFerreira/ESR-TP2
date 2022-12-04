@@ -51,7 +51,8 @@ public class Bootstrap implements Runnable{
 
                     // TODO - Update implementation when possible
                     // For the first implementation which requires all nodes to be on to start the flood.
-                    sharedInfo.addContactedNode(s.getInetAddress().getHostAddress());
+                    //sharedInfo.addContactedNode(s.getInetAddress().getHostAddress());
+
 
                 } catch (IOException e) {
                     throw new RuntimeException(e);

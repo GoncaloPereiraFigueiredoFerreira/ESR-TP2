@@ -102,7 +102,7 @@ public class TransmitionWorker implements Runnable{
             // If the package was processed correctly, send it
             if (newPackage != null) {
                 // Send to all neighbours that want the packet
-                List<String> nodeList = neighbourTable.getConnectedNeighbours();
+                List<String> nodeList = neighbourTable.getNeighboursWantingStream();
                 for (String ipDest : nodeList) {
                     try {
                         DatagramPacket output = new DatagramPacket(newPackage.getData(), newPackage.getLength(), InetAddress.getByName(ipDest), PORT);
