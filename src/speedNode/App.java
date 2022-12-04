@@ -26,13 +26,27 @@ public class App
             return;
         }
 
-        modes.forEach((key, value) -> new Thread(() -> {
-            switch (key) {
-                case "--node" -> OverlayNode.launch(value);
-                case "--bootstrap" -> Bootstrap.launch(value);
-                default -> System.out.println("Invalid program \"" + key + "\"\n" + listPrograms());
+        boolean anyValidArguments = false;
+
+        if(modes.containsKey("--bootstrap")) {
+            System.out.println("bootstrap: " + modes.get("--bootstrap"));
+            new Thread(() -> Bootstrap.launch(modes.get("--bootstrap"))).start();
+            anyValidArguments = true;
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
-        }).start());
+        }
+
+        if(modes.containsKey("--node")){
+            System.out.println("node: " + modes.get("--node"));
+            new Thread(() -> OverlayNode.launch(modes.get("--node"))).start();
+            anyValidArguments = true;
+        }
+
+        if(!anyValidArguments)
+            System.out.println("Invalid program!\n" + listPrograms());
     }
 
     private static String listPrograms(){

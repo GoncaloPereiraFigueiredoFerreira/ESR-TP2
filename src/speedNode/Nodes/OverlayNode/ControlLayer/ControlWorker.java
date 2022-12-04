@@ -74,6 +74,18 @@ public class ControlWorker implements Runnable{
 
             informReadyStateToBootstrap();
 
+
+            try {
+                System.out.println("Waiting for lock..");
+                connectionsLock.lock();
+                System.out.println("Got lock!");
+                for (ConnectionHandler ch : connectionsMap.values())
+                    System.out.println( ch.getTaggedConnection().getHost() + " | Running: " + ch.isRunning());
+            }finally {
+                connectionsLock.unlock();
+            }
+            System.out.println("Finished printing connections");
+
             while(exception != null){
                 // TODO - (executar isto noutro lado ou diminuir a frequencia com que executa de alguma forma)
                 //Removes connectionHandlers that are no longer in use
@@ -103,7 +115,7 @@ public class ControlWorker implements Runnable{
     /* ****** Connect To Bootstrap ****** */
     private TaggedConnection connectToBootstrap() throws IOException {
         //Connect to bootstrap
-        Socket s = new Socket(bootstrapIP, bootstrapPort);
+        Socket s = new Socket(bootstrapIP, bootstrapPort, InetAddress.getByName(bindAddress), 0);
         s.setSoTimeout(timeToWaitForBootstrap);
         return new TaggedConnection(s);
     }
