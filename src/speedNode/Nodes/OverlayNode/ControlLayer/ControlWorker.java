@@ -20,7 +20,6 @@ public class ControlWorker implements Runnable{
     private final String bootstrapIP;
     private final int bootstrapPort = 12345;
     private int timeToWaitForBootstrap = 5 * 60 * 1000;
-    private TaggedConnection bootstrapConnection;
 
     //Self info
     private final String bindAddress;
@@ -66,7 +65,6 @@ public class ControlWorker implements Runnable{
         try{
             ss = new ServerSocket(ssPort, 0, InetAddress.getByName(bindAddress));
 
-            connectToBootstrap();
             requestNeighbours();
             startThreadToAttendNewConnections();
             connectToNeighbours();
@@ -103,11 +101,11 @@ public class ControlWorker implements Runnable{
     }
 
     /* ****** Connect To Bootstrap ****** */
-    private void connectToBootstrap() throws IOException {
+    private TaggedConnection connectToBootstrap() throws IOException {
         //Connect to bootstrap
         Socket s = new Socket(bootstrapIP, bootstrapPort);
         s.setSoTimeout(timeToWaitForBootstrap);
-        bootstrapConnection = new TaggedConnection(s);
+        return new TaggedConnection(s);
     }
 
     /* ****** Request Neighbours ****** */
@@ -117,11 +115,13 @@ public class ControlWorker implements Runnable{
      * @throws IOException if there is any problem with the socket or if the frame received was not the one expected.
      */
     private void requestNeighbours() throws IOException {
+        TaggedConnection bootstrapConnection = connectToBootstrap();
+
         //Get neighbours from bootstrap
-        bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOUR_CONNECTION, new byte[]{});
+        bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, new byte[]{});
         Frame neighboursFrame = bootstrapConnection.receive();
-        if(neighboursFrame.getTag() != Tags.RESPONSE_NEIGHBOUR_CONNECTION)
-            throw new IOException("Frame with tag" + Tags.RESPONSE_NEIGHBOUR_CONNECTION + "expected!");
+        if(neighboursFrame.getTag() != Tags.REQUEST_NEIGHBOURS_EXCHANGE)
+            throw new IOException("Frame with tag" + Tags.REQUEST_NEIGHBOURS_EXCHANGE + "expected!");
         List<String> ips = Serialize.deserializeListOfStrings(neighboursFrame.getData());
 
         //Initial fill of neighbours' table
@@ -275,6 +275,8 @@ public class ControlWorker implements Runnable{
 
     private void acceptNewServer(String server, TaggedConnection tc){
         try{
+            TaggedConnection bootstrapConnection = connectToBootstrap();
+
             //Acknowledge server
             tc.send(0, Tags.CONNECT_AS_SERVER_EXCHANGE, new byte[]{});
 
@@ -343,6 +345,7 @@ public class ControlWorker implements Runnable{
 
     private void informReadyStateToBootstrap() throws IOException {
         //Informs bootstrap that the node is ready
+        TaggedConnection bootstrapConnection = connectToBootstrap();
         bootstrapConnection.send(0, Tags.INFORM_READY_STATE, new byte[]{});
     }
 
@@ -481,10 +484,8 @@ public class ControlWorker implements Runnable{
     /* ****** Close graciously ****** */
     //TODO - Close graciously method
     private void close(){
-        try { bootstrapConnection.close(); }
-        catch (IOException ignored) {}
-
         try {
+            connectionsLock.lock();
             for (ConnectionHandler ch : connectionsMap.values())
                 ch.close();
         }finally { connectionsLock.unlock(); }

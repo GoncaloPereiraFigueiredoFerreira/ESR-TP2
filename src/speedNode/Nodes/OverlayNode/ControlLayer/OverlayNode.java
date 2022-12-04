@@ -5,7 +5,8 @@ import speedNode.Utilities.TaggedConnection.TaggedConnection;
 
 import java.util.List;
 
-public class OverlayNode implements Runnable{
+public class OverlayNode{
+    /*
     private final String bindAddress;
     private final String bootstrapIP;
     TaggedConnection tc;
@@ -33,15 +34,18 @@ public class OverlayNode implements Runnable{
         control_node.run();
 
 
-    }
+    }*/
 
     public static void launch(List<String> args) {
         if (args == null || args.size() == 0) {
             System.out.println("No arguments were given!");
             return;
         }
+
+
+
         //TODO-falta fazer nao sei o que
-        //OverlayNode node = new OverlayNode(args.get(0),args.get(1),args.get(2));
-        //node.run();
+        ControlWorker controlWorker = new ControlWorker(args.get(0), args.get(1), new NeighbourTable(), new RoutingTable(), new ClientTable());
+        controlWorker.run();
     }
 }

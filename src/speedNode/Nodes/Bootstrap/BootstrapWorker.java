@@ -64,7 +64,9 @@ public class BootstrapWorker implements Runnable{
         System.out.println(socket.getInetAddress().getHostAddress()); //TODO - tirar print
 
         List<String> vizinhos = sharedInfo.getNeighbours(socket.getInetAddress().getHostAddress());
-        connection.send(0,1, Serialize.serializeListOfStrings(vizinhos));
-        System.out.println("Sent request with tag 1");
+        System.out.println(vizinhos);
+        System.out.println(Serialize.deserializeListOfStrings(Serialize.serializeListOfStrings(vizinhos)));
+        connection.send(0,Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(vizinhos));
+        System.out.println("Sent request with tag " + Tags.REQUEST_NEIGHBOURS_EXCHANGE);
     }
 }

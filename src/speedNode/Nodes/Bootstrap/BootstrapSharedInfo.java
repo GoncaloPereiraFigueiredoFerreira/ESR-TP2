@@ -21,7 +21,8 @@ public class BootstrapSharedInfo {
     }
 
     public List<String> getNeighbours(String node){
-        return new ArrayList<>(nodesMap.get(node));
+        var neighbours = nodesMap.get(node);
+        return neighbours != null ? new ArrayList<>(nodesMap.get(node)) : null;
     }
 
     public void addContactedNode(String contactedNode){
