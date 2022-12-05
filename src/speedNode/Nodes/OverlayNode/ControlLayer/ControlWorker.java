@@ -1,21 +1,25 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
+import speedNode.LoggingToFile;
 import speedNode.Utilities.*;
 import speedNode.Nodes.Tables.*;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
+
+import java.io.EOFException;
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import speedNode.Utilities.TaggedConnection.Frame;
 
 //TODO - verificar como é a situacao de um nodo ser servidor e cliente
 public class ControlWorker implements Runnable{
+    //Logger
+    private final Logger logger;
+
     //Bootstrap info
     private final String bootstrapIP;
     private final int bootstrapPort = 12345;
@@ -58,12 +62,16 @@ public class ControlWorker implements Runnable{
         this.routingTable = routingTable;
         this.clientTable = clientTable;
         this.bootstrapIP = bootstrapIP;
+        this.logger = LoggingToFile.createLogger("CW" + bindAddress + ".txt", "", true);
     }
 
     @Override
     public void run() {
         try{
+            logger.info("Running...");
+
             ss = new ServerSocket(ssPort, 0, InetAddress.getByName(bindAddress));
+            logger.info("Server Socket created.");
 
             requestNeighbours();
             startThreadToAttendNewConnections();
@@ -112,12 +120,22 @@ public class ControlWorker implements Runnable{
         close();
     }
 
+    /* ****** Custom socket ****** */
+    private Socket createSocket(String hostIP, int hostPort) throws IOException {
+        return new Socket(hostIP, hostPort, InetAddress.getByName(bindAddress), 0);
+    }
+
     /* ****** Connect To Bootstrap ****** */
     private TaggedConnection connectToBootstrap() throws IOException {
+        logger.info("Connecting to bootstrap...");
+
         //Connect to bootstrap
-        Socket s = new Socket(bootstrapIP, bootstrapPort, InetAddress.getByName(bindAddress), 0);
+        Socket s = createSocket(bootstrapIP, bootstrapPort);
         s.setSoTimeout(timeToWaitForBootstrap);
-        return new TaggedConnection(s);
+        TaggedConnection tc = new TaggedConnection(s);
+
+        logger.info("Connected to bootstrap.");
+        return tc;
     }
 
     /* ****** Request Neighbours ****** */
@@ -130,14 +148,23 @@ public class ControlWorker implements Runnable{
         TaggedConnection bootstrapConnection = connectToBootstrap();
 
         //Get neighbours from bootstrap
+        logger.info("Requesting neighbours from bootstrap.");
         bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, new byte[]{});
+
+        logger.info("Waiting for bootstrap response...");
         Frame neighboursFrame = bootstrapConnection.receive();
-        if(neighboursFrame.getTag() != Tags.REQUEST_NEIGHBOURS_EXCHANGE)
+
+        if(neighboursFrame.getTag() != Tags.REQUEST_NEIGHBOURS_EXCHANGE) {
+            logger.warning("Received response with wrong tag from bootstrap!");
             throw new IOException("Frame with tag" + Tags.REQUEST_NEIGHBOURS_EXCHANGE + "expected!");
+        }
+
         List<String> ips = Serialize.deserializeListOfStrings(neighboursFrame.getData());
+        logger.info("[Bootstrap response] neighbours: " + ips);
 
         //Initial fill of neighbours' table
         this.neighbourTable.addNeighbours(ips);
+        logger.info(ips + " added to Neighbours' Table.");
     }
 
 
@@ -145,44 +172,61 @@ public class ControlWorker implements Runnable{
 
     private void connectToNeighbours() throws IOException {
         var neighbours = neighbourTable.getNeighbours();
+
         //Filters the neighbours that are already connected
-        neighbours = neighbours.stream()
-                .filter(neighbour -> !connectionsMap.containsKey(neighbour) )
-                .collect(Collectors.toList());
+        try {
+            connectionsLock.lock();
+            neighbours = neighbours.stream()
+                    .filter(neighbour -> !connectionsMap.containsKey(neighbour))
+                    .collect(Collectors.toList());
+        }
+        finally { connectionsLock.unlock(); }
+
+        logger.info("Connecting to neighbours: " + neighbours);
 
         for(String neighbour : neighbours)
             connectToNeighbour(neighbour);
     }
 
     private void connectToNeighbour(String neighbour) throws IOException{
+        Socket s = null;
         try {
-            Socket s = new Socket(neighbour, ssPort);
+            //Creating socket to contact neighbour
+            logger.info("Creating socket to contact neighbour " + neighbour + "...");
+            s = createSocket(neighbour, ssPort);
             s.setSoTimeout(timeToWaitForNeighbour); //Sets the waiting time till the connection is established, after which the connection is dropped
             TaggedConnection tc = new TaggedConnection(s);
+            logger.info("Created socket to contact neighbour " + neighbour + ".");
+
+            //Requesting neighbour to establish connection
+            logger.info("Requesting neighbour " + neighbour + " to establish connection.");
             tc.send(0, Tags.REQUEST_NEIGHBOUR_CONNECTION, new byte[]{}); //Send connection request
             Frame frame = tc.receive(); //Waits for answer
+            logger.info("Received answer from neighbour " + neighbour);
 
             //If the tag is not equal to RESPONSE_NEIGHBOUR_CONNECTION then the connection is refused
             if(frame.getTag() != Tags.RESPONSE_NEIGHBOUR_CONNECTION){
+                logger.info("Expected frame with tag" + Tags.RESPONSE_NEIGHBOUR_CONNECTION + " from neighbour " + neighbour);
                 s.close();
+                return;
             }
 
             //Boolean == True -> Neighbour added the connection to his map
             //Otherwise -> Neighbour did not add connection to his map
             if(Serialize.deserializeBoolean(frame.getData())){
+                logger.info("Neighbour " + neighbour + " accepted connection.");
                 try{
                     connectionsLock.lock();
 
                     //Only adds the connection if there isn't already a connection
-                    //Or in case there is, if the neighbours IP is lexically inferior
+                    //Or, in case there is one active, if the neighbours IP is lexically superior
                     ConnectionHandler ch = connectionsMap.get(neighbour);
-                    if(ch == null)
+                    if(ch == null || neighbour.compareTo(bindAddress) > 0)
                         initiateNeighbourConnectionReceiver(neighbour, tc);
-                    else if(neighbour.compareTo(bindAddress) < 0) {
-                        ch.close();
-                        initiateNeighbourConnectionReceiver(neighbour, tc);
+                    else {
+                        s.close();
+                        return;
                     }
-                    else {s.close(); return;}
 
                     //Declare neighbour as connected
                     neighbourTable.updateConnectionNeighbour(neighbour, true);
@@ -190,7 +234,16 @@ public class ControlWorker implements Runnable{
             }
             else s.close();
         }
-        catch (UnknownHostException ignored){}
+        catch (UnknownHostException ignored){
+            logger.warning("Unknown Host Exception for neighbour " + neighbour);
+        }
+        catch (ConnectException ce){
+            logger.warning("Could not connect to neighbour " + neighbour);
+        }
+        catch (EOFException eofe){
+            logger.warning("EOF Exception thrown when trying to read response from " + neighbour);
+            if(s != null && !s.isClosed()) s.close();
+        }
     }
 
 
@@ -203,6 +256,7 @@ public class ControlWorker implements Runnable{
             catch (IOException e) { exception = e; }});
         threads.add(acceptConnectionsThread);
         acceptConnectionsThread.start();
+        logger.info("Created thread to attend new connections.");
     }
 
     private void attendNewConnections() throws IOException {
@@ -214,48 +268,66 @@ public class ControlWorker implements Runnable{
             childThreads.removeIf(t -> !t.isAlive());
 
             Socket s = ss.accept();
+            String contact = s.getInetAddress().getHostAddress();
+            logger.info("New connection from " + contact);
             s.setSoTimeout(timeToWaitForNeighbour);
             TaggedConnection tc = new TaggedConnection(s);
-            String contact = s.getInetAddress().getHostAddress();
 
             Thread t = new Thread(() -> {
                 try {
                     Frame frame = tc.receive();
+                    logger.info("Received frame from " + contact + " with tag " + frame.getTag());
+
                     switch (frame.getTag()) {
                         case Tags.REQUEST_NEIGHBOUR_CONNECTION -> acceptNeighbourConnection(contact, tc);
                         case Tags.CONNECT_AS_CLIENT_EXCHANGE -> acceptNewClient(contact, tc);
                         case Tags.CONNECT_AS_SERVER_EXCHANGE -> acceptNewServer(contact, tc);
                     }
-                } catch (IOException ignored) {}
-
-                try { tc.close(); }
-                catch (IOException ignored){}
+                } catch (IOException ignored) {
+                    logger.warning("IO Exception while handling frame from " + contact);
+                    try { tc.close(); }
+                    catch (IOException ignored2){}
+                }
             });
             t.start();
             childThreads.add(t);
+            logger.info("Created thread to attend the request from " + contact);
         }
 
+        logger.info("New connections attendant: joining child threads...");
         for(Thread t : childThreads) {
             try { t.join();}
             catch (InterruptedException ignored) {}
         }
+        logger.info("Connection attendant closed.");
     }
 
     private void acceptNeighbourConnection(String neighbour, TaggedConnection tc) throws IOException{
-
         //if the connectionMap already contains the ip of the Socket, an answer claiming the existence of the ip is sent
         try {
             connectionsLock.lock();
             ConnectionHandler ch = connectionsMap.get(neighbour);
             if(ch != null){
+                logger.info("Rejecting " + neighbour + "'s connection... Another connection is already active!");
+
+                //Sends response rejecting the new connection
                 var b = Serialize.serializeBoolean(false);
                 tc.send(0,Tags.RESPONSE_NEIGHBOUR_CONNECTION,b);
+
+                //Closes socket
                 tc.close();
             }
             //otherwise, an answer saying that the ip was added is sent
             else{
+                logger.info("Accepting " + neighbour + "'s connection...");
+
+                //Sends response accepting the new connection
                 var b = Serialize.serializeBoolean(true);
                 tc.send(0,Tags.RESPONSE_NEIGHBOUR_CONNECTION,b);
+
+                //Declares neighbour as active
+                neighbourTable.updateConnectionNeighbour(neighbour, true);
+
                 initiateNeighbourConnectionReceiver(neighbour, tc);
             }
         }
@@ -315,23 +387,39 @@ public class ControlWorker implements Runnable{
                 tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
             }
 
+            bootstrapConnection.close();
         }catch (IOException ignored){}
     }
 
     /* ****** Initiate Neighbour Connections Receivers ****** */
 
     private void initiateNeighbourConnectionReceiver(String neighbour, TaggedConnection tc){
-        ConnectionHandler ch = new ConnectionHandler(neighbour, tc, framesInputQueue);
+        ConnectionHandler ch;
         try {
             connectionsLock.lock();
-            if(connectionsMap.containsKey(neighbour)) return;
+
+            //If the map contains already a connection handler, then a receiver must be already active
+            ch = connectionsMap.get(neighbour);
+            if(ch != null) {
+                logger.info("Closing existing connection for neighbour " + neighbour);
+                //closes the existing connection if there is one
+                ch.close();
+            }
+
+            //Creates a connection handler and puts it in the map of connection handlers
+            ch = new ConnectionHandler(neighbour, tc, framesInputQueue);
             connectionsMap.put(neighbour, ch);
-            neighbourTable.updateWantsStream(neighbour,true);
         }finally { connectionsLock.unlock(); }
 
+        //Starts the thread responsible for receiving the frames from the neighbour
         Thread t = new Thread(ch);
         t.start();
         threads.add(t);
+
+        //Declares the connection as active
+        neighbourTable.updateConnectionNeighbour(neighbour,true);
+
+        logger.info("Connection receiver initiated for neighbour " + neighbour);
     }
 
     /* ****** Check Necessary Conditions to Start ****** */
@@ -340,17 +428,20 @@ public class ControlWorker implements Runnable{
     private void waitsForStartConditionsToBeMet() throws InterruptedException {
         boolean allReady = false;
         var neighbours = neighbourTable.getNeighbours();
+        System.out.println("********** waitForStart neighbours: " + neighbours + "************");
 
         while (!allReady){
             allReady = true;
 
             for(int i = 0; i < neighbours.size() && allReady; i++)
-                if(!neighbourTable.wantStream(neighbours.get(i)))
+                if(!neighbourTable.isConnected(neighbours.get(i)))
                     allReady = false;
 
             //TODO - substituir por metodo da NeighboursTable que aguarda que todos os neighbours estejam prontos
             Thread.sleep(200);
         }
+
+        System.out.println("********** all ready ************");
     }
 
     /* ****** Inform bootstrap that the node is ready ****** */
@@ -359,6 +450,7 @@ public class ControlWorker implements Runnable{
         //Informs bootstrap that the node is ready
         TaggedConnection bootstrapConnection = connectToBootstrap();
         bootstrapConnection.send(0, Tags.INFORM_READY_STATE, new byte[]{});
+        bootstrapConnection.close();
     }
 
 
