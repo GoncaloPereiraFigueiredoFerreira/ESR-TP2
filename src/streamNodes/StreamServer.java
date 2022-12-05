@@ -38,8 +38,8 @@ public class StreamServer extends JFrame implements ActionListener {
     int imagenb = 0; //image nb of the image currently transmitted
     VideoStream video; //VideoStream object used to access video frames
     static int MJPEG_TYPE = 26; //RTP payload type for MJPEG video
-    static int FRAME_PERIOD = 100; //Frame period of the video to stream, in ms //TODO: deviam ser 24 frames por segundo ou seja de 42 em 42 ms
-    static int VIDEO_LENGTH = 500; //length of the video in frames  //TODO: isto devia ser calculado
+    static int FRAME_PERIOD = 42; //Frame period of the video to stream, in ms //TODO: deviam ser 24 frames por segundo ou seja de 42 em 42 ms
+    static int VIDEO_LENGTH = 500; //length of the video in frames  //TODO: isto devia ser calculado // este numero está predefinido pelo video q nos deram
 
     Timer sTimer; //timer used to send the images at the video frame rate
     byte[] sBuf; //buffer used to store the images to send to the client
@@ -127,7 +127,6 @@ public class StreamServer extends JFrame implements ActionListener {
     //Handler for timer
     //------------------------
     public void actionPerformed(ActionEvent e) {
-        System.out.println("OIIII");
         //if the current image nb is less than the length of the video
         if (imagenb < VIDEO_LENGTH)
         {
@@ -169,6 +168,11 @@ public class StreamServer extends JFrame implements ActionListener {
         {
             //if we have reached the end of the video file, stop the timer
             //sTimer.stop();
+            try {
+                video = new VideoStream(VideoFileName);
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
             sTimer.restart();
             imagenb=0;
         }
