@@ -9,6 +9,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -37,8 +38,8 @@ public class ControlWorker implements Runnable{
     private IClientTable clientTable;
 
     // Connections Map
-    private final Map<String, ConnectionHandler> connectionsMap = new HashMap<>();
-    private final ReentrantLock connectionsLock = new ReentrantLock();
+    //private final Map<String, ConnectionHandler> connectionsMap = new HashMap<>();
+    //private final ReentrantLock connectionsLock = new ReentrantLock();
 
     // Queue with frames to be handled by the main control thread
     // Tuple : (ip of who sent the frame, frame)
@@ -82,31 +83,13 @@ public class ControlWorker implements Runnable{
 
             informReadyStateToBootstrap();
 
-
-            try {
-                System.out.println("Waiting for lock..");
-                connectionsLock.lock();
-                System.out.println("Got lock!");
-                for (ConnectionHandler ch : connectionsMap.values())
-                    System.out.println( ch.getTaggedConnection().getHost() + " | Running: " + ch.isRunning());
-            }finally {
-                connectionsLock.unlock();
-            }
-            System.out.println("Finished printing connections");
+            System.out.println("************************\nconnected neighbours: " + neighbourTable.getConnectedNeighbours()+"\n**********************");
 
             while(exception != null){
-                // TODO - (executar isto noutro lado ou diminuir a frequencia com que executa de alguma forma)
-                //Removes connectionHandlers that are no longer in use
-                try {
-                    connectionsLock.lock();
-                    for (Map.Entry<String, ConnectionHandler> entry : connectionsMap.entrySet())
-                        if(!entry.getValue().isRunning())
-                            connectionsMap.remove(entry.getKey());
-                }finally { connectionsLock.unlock(); }
-
                 //Remove dead threads
                 threads.removeIf(t -> !t.isAlive());
 
+                //Handle received frame
                 Tuple<String,Frame> tuple = framesInputQueue.popElem();
                 handleFrame(tuple.fst, tuple.snd);
             }
@@ -171,16 +154,8 @@ public class ControlWorker implements Runnable{
     /* ****** Connect to Neighbours ****** */
 
     private void connectToNeighbours() throws IOException {
-        var neighbours = neighbourTable.getNeighbours();
-
-        //Filters the neighbours that are already connected
-        try {
-            connectionsLock.lock();
-            neighbours = neighbours.stream()
-                    .filter(neighbour -> !connectionsMap.containsKey(neighbour))
-                    .collect(Collectors.toList());
-        }
-        finally { connectionsLock.unlock(); }
+        //Get neighbours that are not connected
+        var neighbours = neighbourTable.getUnconnectedNeighbours();
 
         logger.info("Connecting to neighbours: " + neighbours);
 
@@ -215,22 +190,20 @@ public class ControlWorker implements Runnable{
             //Otherwise -> Neighbour did not add connection to his map
             if(Serialize.deserializeBoolean(frame.getData())){
                 logger.info("Neighbour " + neighbour + " accepted connection.");
+
                 try{
-                    connectionsLock.lock();
+                    neighbourTable.writeLock();
 
                     //Only adds the connection if there isn't already a connection
                     //Or, in case there is one active, if the neighbours IP is lexically superior
-                    ConnectionHandler ch = connectionsMap.get(neighbour);
+                    ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbour);
                     if(ch == null || neighbour.compareTo(bindAddress) > 0)
                         initiateNeighbourConnectionReceiver(neighbour, tc);
                     else {
                         s.close();
                         return;
                     }
-
-                    //Declare neighbour as connected
-                    neighbourTable.updateConnectionNeighbour(neighbour, true);
-                }finally{connectionsLock.unlock();}
+                }finally{neighbourTable.writeUnlock();}
             }
             else s.close();
         }
@@ -303,11 +276,12 @@ public class ControlWorker implements Runnable{
     }
 
     private void acceptNeighbourConnection(String neighbour, TaggedConnection tc) throws IOException{
-        //if the connectionMap already contains the ip of the Socket, an answer claiming the existence of the ip is sent
         try {
-            connectionsLock.lock();
-            ConnectionHandler ch = connectionsMap.get(neighbour);
-            if(ch != null){
+            neighbourTable.writeLock();
+
+            //if a connection is already active, an answer is sent rejecting the new connection and
+            // claiming the existence of a connection with the neighbour
+            if(neighbourTable.isConnected(neighbour)){
                 logger.info("Rejecting " + neighbour + "'s connection... Another connection is already active!");
 
                 //Sends response rejecting the new connection
@@ -325,16 +299,10 @@ public class ControlWorker implements Runnable{
                 var b = Serialize.serializeBoolean(true);
                 tc.send(0,Tags.RESPONSE_NEIGHBOUR_CONNECTION,b);
 
-                //Declares neighbour as active
-                neighbourTable.updateConnectionNeighbour(neighbour, true);
-
                 initiateNeighbourConnectionReceiver(neighbour, tc);
             }
         }
-        finally {
-            connectionsLock.unlock();
-        }
-
+        finally { neighbourTable.writeUnlock(); }
     }
 
     private void acceptNewClient(String client, TaggedConnection tc) throws IOException {
@@ -396,30 +364,29 @@ public class ControlWorker implements Runnable{
     private void initiateNeighbourConnectionReceiver(String neighbour, TaggedConnection tc){
         ConnectionHandler ch;
         try {
-            connectionsLock.lock();
+            neighbourTable.writeLock();
 
-            //If the map contains already a connection handler, then a receiver must be already active
-            ch = connectionsMap.get(neighbour);
-            if(ch != null) {
+            //Creates a connection handler
+            ch = new ConnectionHandler(neighbour, tc, framesInputQueue);
+
+            //Inserts the new connection handler in neighbours table.
+            //If the table had a connection handler for the given neighbour,
+            // then a receiver must be already active and should be closed.
+            ConnectionHandler previousCh = neighbourTable.updateConnectionHandler(neighbour, ch);
+
+            //closes the existing connection if there is one
+            if(previousCh != null) {
                 logger.info("Closing existing connection for neighbour " + neighbour);
-                //closes the existing connection if there is one
-                ch.close();
+                previousCh.close();
             }
 
-            //Creates a connection handler and puts it in the map of connection handlers
-            ch = new ConnectionHandler(neighbour, tc, framesInputQueue);
-            connectionsMap.put(neighbour, ch);
-        }finally { connectionsLock.unlock(); }
+            //Starts the thread responsible for receiving the frames from the neighbour
+            Thread t = new Thread(ch);
+            t.start();
+            threads.add(t);
 
-        //Starts the thread responsible for receiving the frames from the neighbour
-        Thread t = new Thread(ch);
-        t.start();
-        threads.add(t);
-
-        //Declares the connection as active
-        neighbourTable.updateConnectionNeighbour(neighbour,true);
-
-        logger.info("Connection receiver initiated for neighbour " + neighbour);
+            logger.info("Connection receiver initiated for neighbour " + neighbour);
+        }finally { neighbourTable.writeUnlock(); }
     }
 
     /* ****** Check Necessary Conditions to Start ****** */
@@ -451,6 +418,7 @@ public class ControlWorker implements Runnable{
         TaggedConnection bootstrapConnection = connectToBootstrap();
         bootstrapConnection.send(0, Tags.INFORM_READY_STATE, new byte[]{});
         bootstrapConnection.close();
+        logger.info("Informed bootstrap of ready state.");
     }
 
 
@@ -462,11 +430,23 @@ public class ControlWorker implements Runnable{
         var oldProvidingIP = routingTable.getActiveRoute().snd;
         routingTable.activateBestRoute();
         var newProvidingIP = routingTable.getActiveRoute().snd;
-        if(oldProvidingIP!=null && !Objects.equals(oldProvidingIP, newProvidingIP) ){
-            connectionsMap.get(newProvidingIP).getTaggedConnection().send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
-            connectionsMap.get(oldProvidingIP).getTaggedConnection().send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
+
+        ConnectionHandler newProvCH = neighbourTable.getConnectionHandler(newProvidingIP);
+        TaggedConnection newProvTC = newProvCH == null ? null : newProvCH.getTaggedConnection();
+
+
+        if(oldProvidingIP != null && !Objects.equals(oldProvidingIP, newProvidingIP)){
+            ConnectionHandler oldProvCH = neighbourTable.getConnectionHandler(oldProvidingIP);
+            TaggedConnection oldProvTC = oldProvCH == null ? null : oldProvCH.getTaggedConnection();
+
+            if(newProvTC != null)
+                newProvTC.send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
+
+            if(oldProvTC != null)
+                oldProvTC.send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
         }
-        else connectionsMap.get(newProvidingIP).getTaggedConnection().send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
+        else if(newProvTC != null)
+            newProvTC.send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
 
         //Se a rota mudou
         //  -> Contactar novo vizinho e cancelar rota antiga (se existir)
@@ -485,20 +465,28 @@ public class ControlWorker implements Runnable{
      */
 
     private void startFlood(String server){
-        for(ConnectionHandler ch : connectionsMap.values()){
-            TaggedConnection tc = ch.getTaggedConnection();
+        List<String> neighbours = neighbourTable.getNeighbours();
 
-            // Construct payload
-            List<String> msg_flood = new ArrayList<>();
-            msg_flood.add(server); // Server
-            msg_flood.add("0");  // nr of jumps
-            String time = Long.toString(System.currentTimeMillis());
-            msg_flood.add(time); // timestamp of the start of the flood
+        //Iterates through all neighbours and sends the flood frame for everyone that is active
+        for(String neighbour : neighbours){
+            ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbour);
 
-            try {
-                tc.send(0, Tags.FLOOD, Serialize.serializeListOfStrings(msg_flood));
-                floodControl.sentFlood(server, tc.getHost(), 0); //Registers the ip of the neighbour to avoid a repetitive send
-            }catch (Exception ignored){}
+            //Executes if the connection is active
+            if(ch != null && ch.isRunning()) {
+                TaggedConnection tc = ch.getTaggedConnection();
+
+                // Construct payload
+                List<String> msg_flood = new ArrayList<>();
+                msg_flood.add(server); // Server
+                msg_flood.add("0");  // nr of jumps
+                String time = Long.toString(System.currentTimeMillis());
+                msg_flood.add(time); // timestamp of the start of the flood
+
+                try {
+                    tc.send(0, Tags.FLOOD, Serialize.serializeListOfStrings(msg_flood));
+                    floodControl.sentFlood(server, tc.getHost(), 0); //Registers the ip of the neighbour to avoid a repetitive send
+                } catch (Exception ignored) {}
+            }
         }
     }
 
@@ -539,18 +527,17 @@ public class ControlWorker implements Runnable{
             //Get nodes that already got the flood frame
             var floodedNodes = floodControl.floodedNodes(serverIp);
 
-            try {
-                connectionsLock.lock();
 
-                //Get the connection handlers of the nodes that did not get flood frame
-                var chs = connectionsMap.entrySet()
-                                                                          .stream()
-                                                                          .filter(e -> !floodedNodes.contains(e.getKey()))
-                                                                          .map(Map.Entry::getValue)
-                                                                          .collect(Collectors.toList());
+            //Get all neighbours and removes the ones that already got flooded
+            List<String> neighbours = neighbourTable.getNeighbours();
+            neighbours.removeAll(floodedNodes);
 
-                //Sends the flood frame to every node that has not been flooded
-                for (ConnectionHandler ch : chs) {
+            //Sends the flood frame to every node that has not been flooded and is active
+            for (String neighbour : neighbours) {
+                ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbour);
+
+                //Executes if the connection is active
+                if (ch != null && ch.isRunning()) {
                     TaggedConnection tc = ch.getTaggedConnection();
 
                     //Creates the frame data
@@ -566,13 +553,11 @@ public class ControlWorker implements Runnable{
                     //Registers that the neighbour has received the flood frame
                     floodControl.sentFlood(serverIp, tc.getHost(), floodIndex);
                 }
-
-            }finally { connectionsLock.unlock(); }
+            }
         }
     }
 
     private void handleActivateRoute(String ip) throws IOException{
-
         this.neighbourTable.updateWantsStream(ip,true);
         activateBestRoute();
     }
@@ -580,8 +565,11 @@ public class ControlWorker implements Runnable{
     private void handleDeactivateRoute(String ip) throws IOException{
         this.neighbourTable.updateWantsStream(ip,false);
         if(this.neighbourTable.getNeighboursWantingStream().size() == 0){
-            var oldProvidingIP = routingTable.getActiveRoute().snd;
-            connectionsMap.get(oldProvidingIP).getTaggedConnection().send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
+            String oldProvidingIP = routingTable.getActiveRoute().snd;
+            ConnectionHandler ch = neighbourTable.getConnectionHandler(oldProvidingIP);
+
+            if(ch!=null && ch.isRunning())
+                ch.getTaggedConnection().send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
         }
     }
 
@@ -589,12 +577,17 @@ public class ControlWorker implements Runnable{
     //TODO - Close graciously method
     private void close(){
         try {
-            connectionsLock.lock();
-            for (ConnectionHandler ch : connectionsMap.values())
-                ch.close();
-        }finally { connectionsLock.unlock(); }
+            //Interrupts every
+            neighbourTable.writeLock();
 
-        interruptAndJoinThreads(this.threads);
+            //Interrupts every connection receiver
+            List<String> connectedNeighbours = neighbourTable.getConnectedNeighbours();
+            for (String neighbour : connectedNeighbours)
+                neighbourTable.getConnectionHandler(neighbour).close();
+
+            //Interrupts every thread
+            interruptAndJoinThreads(this.threads);
+        }finally { neighbourTable.writeUnlock(); }
     }
 
     private static void interruptAndJoinThreads(Collection<Thread> threads){

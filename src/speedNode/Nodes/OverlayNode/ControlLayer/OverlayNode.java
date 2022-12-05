@@ -1,7 +1,6 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
 import speedNode.Nodes.Tables.*;
-import speedNode.Utilities.TaggedConnection.TaggedConnection;
 
 import java.util.List;
 

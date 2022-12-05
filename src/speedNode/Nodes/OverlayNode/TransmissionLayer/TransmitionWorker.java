@@ -2,14 +2,14 @@ package speedNode.Nodes.OverlayNode.TransmissionLayer;
 
 import speedNode.Utilities.ProtectedQueue;
 import speedNode.Nodes.Tables.IClientTable;
-import speedNode.Nodes.Tables.INeighbourTable;
+import speedNode.Nodes.Tables.INeighbourTableAntiga;
 import speedNode.Nodes.Tables.IRoutingTable;
 
 import java.net.*;
 import java.util.List;
 
 public class TransmitionWorker implements Runnable{
-    private final INeighbourTable neighbourTable;
+    private final INeighbourTableAntiga neighbourTable;
     private final IRoutingTable routingTable;
     private final IClientTable clientTable;
     private final ProtectedQueue<DatagramPacket> inputQueue = new ProtectedQueue<>();
@@ -18,7 +18,7 @@ public class TransmitionWorker implements Runnable{
     private static final int PORT=50000;
     public static final int MAX_UDP_P_SIZE = 15000; // To be defined
 
-    public TransmitionWorker(INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
+    public TransmitionWorker(INeighbourTableAntiga neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.clientTable = clientTable;
         this.routingTable = routingTable;
         this.neighbourTable = neighbourTable;
