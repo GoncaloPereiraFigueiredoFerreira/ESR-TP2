@@ -85,7 +85,7 @@ public class ControlWorker implements Runnable{
 
             System.out.println("************************\nconnected neighbours: " + neighbourTable.getConnectedNeighbours()+"\n**********************");
 
-            while(exception != null){
+            while(exception == null){
                 //Remove dead threads
                 threads.removeIf(t -> !t.isAlive());
 
@@ -241,30 +241,36 @@ public class ControlWorker implements Runnable{
             childThreads.removeIf(t -> !t.isAlive());
 
             Socket s = ss.accept();
-            String contact = s.getInetAddress().getHostAddress();
-            logger.info("New connection from " + contact);
-            s.setSoTimeout(timeToWaitForNeighbour);
-            TaggedConnection tc = new TaggedConnection(s);
 
-            Thread t = new Thread(() -> {
-                try {
-                    Frame frame = tc.receive();
-                    logger.info("Received frame from " + contact + " with tag " + frame.getTag());
+            try {
+                String contact = s.getInetAddress().getHostAddress();
+                logger.info("New connection from " + contact);
+                s.setSoTimeout(timeToWaitForNeighbour);
+                TaggedConnection tc = new TaggedConnection(s);
 
-                    switch (frame.getTag()) {
-                        case Tags.REQUEST_NEIGHBOUR_CONNECTION -> acceptNeighbourConnection(contact, tc);
-                        case Tags.CONNECT_AS_CLIENT_EXCHANGE -> acceptNewClient(contact, tc);
-                        case Tags.CONNECT_AS_SERVER_EXCHANGE -> acceptNewServer(contact, tc);
+                Thread t = new Thread(() -> {
+                    try {
+                        Frame frame = tc.receive();
+                        logger.info("Received frame from " + contact + " with tag " + frame.getTag());
+
+                        switch (frame.getTag()) {
+                            case Tags.REQUEST_NEIGHBOUR_CONNECTION -> acceptNeighbourConnection(contact, tc);
+                            case Tags.CONNECT_AS_CLIENT_EXCHANGE -> acceptNewClient(contact, tc);
+                            case Tags.CONNECT_AS_SERVER_EXCHANGE -> acceptNewServer(contact, tc);
+                        }
+                    } catch (IOException ignored) {
+                        logger.warning("IO Exception while handling frame from " + contact);
+                        try {
+                            tc.close();
+                        } catch (IOException ignored2) {
+                        }
                     }
-                } catch (IOException ignored) {
-                    logger.warning("IO Exception while handling frame from " + contact);
-                    try { tc.close(); }
-                    catch (IOException ignored2){}
-                }
-            });
-            t.start();
-            childThreads.add(t);
-            logger.info("Created thread to attend the request from " + contact);
+                });
+                t.start();
+                childThreads.add(t);
+                logger.info("Created thread to attend the request from " + contact);
+
+            }catch (IOException ignored){}
         }
 
         logger.info("New connections attendant: joining child threads...");
@@ -367,7 +373,7 @@ public class ControlWorker implements Runnable{
             neighbourTable.writeLock();
 
             //Creates a connection handler
-            ch = new ConnectionHandler(neighbour, tc, framesInputQueue);
+            ch = new ConnectionHandler(neighbour, tc, framesInputQueue, logger);
 
             //Inserts the new connection handler in neighbours table.
             //If the table had a connection handler for the given neighbour,
@@ -397,15 +403,24 @@ public class ControlWorker implements Runnable{
         var neighbours = neighbourTable.getNeighbours();
         System.out.println("********** waitForStart neighbours: " + neighbours + "************");
 
+
+        int j = 0;
+        String notCon = null;
+
         while (!allReady){
             allReady = true;
 
             for(int i = 0; i < neighbours.size() && allReady; i++)
-                if(!neighbourTable.isConnected(neighbours.get(i)))
+                if(!neighbourTable.isConnected(neighbours.get(i))) {
                     allReady = false;
+                    notCon = neighbours.get(i);
+                }
 
             //TODO - substituir por metodo da NeighboursTable que aguarda que todos os neighbours estejam prontos
-            Thread.sleep(200);
+            if(!allReady) {
+                System.out.println(j + " - Waiting for " + notCon + " | ch: " + neighbourTable.getConnectionHandler(notCon));
+                Thread.sleep(2000);
+            }
         }
 
         System.out.println("********** all ready ************");
