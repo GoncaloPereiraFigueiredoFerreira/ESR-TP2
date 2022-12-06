@@ -81,7 +81,7 @@ public class FloodControl {
             if (sentSet != null)
                 set.addAll(sentSet);
 
-            var receivedSet = floodSent.get(server);
+            var receivedSet = floodReceived.get(server);
             if (receivedSet != null)
                 set.addAll(receivedSet);
 

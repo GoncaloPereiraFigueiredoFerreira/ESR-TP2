@@ -37,7 +37,7 @@ public class OverlayNode{
 
     public static void launch(List<String> args) {
         if (args == null || args.size() == 0) {
-            System.out.println("No arguments were given!");
+            System.out.println("OverlayNode: No arguments were given! Requires the IP of the preferred device's interface, and the bootstrap's interface IP.");
             return;
         }
 

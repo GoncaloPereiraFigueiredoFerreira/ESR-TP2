@@ -1,6 +1,6 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
-import speedNode.LoggingToFile;
+import speedNode.Utilities.LoggingToFile;
 import speedNode.Utilities.*;
 import speedNode.Nodes.Tables.*;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
@@ -9,10 +9,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import speedNode.Utilities.TaggedConnection.Frame;
 
@@ -37,10 +34,6 @@ public class ControlWorker implements Runnable{
     private IRoutingTable routingTable;
     private IClientTable clientTable;
 
-    // Connections Map
-    //private final Map<String, ConnectionHandler> connectionsMap = new HashMap<>();
-    //private final ReentrantLock connectionsLock = new ReentrantLock();
-
     // Queue with frames to be handled by the main control thread
     // Tuple : (ip of who sent the frame, frame)
     private final ProtectedQueue<Tuple<String,Frame>> framesInputQueue = new ProtectedQueue<>();
@@ -63,7 +56,7 @@ public class ControlWorker implements Runnable{
         this.routingTable = routingTable;
         this.clientTable = clientTable;
         this.bootstrapIP = bootstrapIP;
-        this.logger = LoggingToFile.createLogger("CW" + bindAddress + ".txt", "", true);
+        this.logger = LoggingToFile.createLogger("OverlayNode" + bindAddress + ".txt", "", true);
     }
 
     @Override
@@ -148,6 +141,8 @@ public class ControlWorker implements Runnable{
         //Initial fill of neighbours' table
         this.neighbourTable.addNeighbours(ips);
         logger.info(ips + " added to Neighbours' Table.");
+
+        bootstrapConnection.close();
     }
 
 

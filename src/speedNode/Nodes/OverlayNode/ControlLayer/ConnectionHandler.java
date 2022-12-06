@@ -34,7 +34,7 @@ public class ConnectionHandler implements Runnable{
 
             try {
                 frame = connection.receive();
-                logger.info("Received frame from " + neighbour);
+                logger.info("Received frame from " + neighbour + " with tag " + frame.getTag());
             }
             catch (SocketException se){
                 se.printStackTrace();

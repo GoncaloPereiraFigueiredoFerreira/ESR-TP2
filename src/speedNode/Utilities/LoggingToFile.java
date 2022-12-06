@@ -1,4 +1,4 @@
-package speedNode;
+package speedNode.Utilities;
 
 import java.io.IOException;
 import java.util.logging.FileHandler;

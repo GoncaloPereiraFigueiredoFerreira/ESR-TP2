@@ -2,6 +2,7 @@ package speedNode;
 
 import speedNode.Nodes.Bootstrap.Bootstrap;
 import speedNode.Nodes.OverlayNode.ControlLayer.OverlayNode;
+import speedNode.Nodes.Server.TestServer;
 
 import java.util.*;
 
@@ -21,10 +22,13 @@ public class App
 
         Map<String,List<String>> modes = extractModesAndArgs(args);
 
+        //If no modes are detected, exit the program
         if(modes.size() == 0){
             System.out.println("No valid program was given!\n" + listPrograms());
             return;
         }
+
+        //TODO - meter isto direito - so deve aceitar o launch de um tipo
 
         boolean anyValidArguments = false;
 
@@ -44,6 +48,13 @@ public class App
             new Thread(() -> OverlayNode.launch(modes.get("--node"))).start();
             anyValidArguments = true;
         }
+
+        if(modes.containsKey("--server")){
+            System.out.println("server: " + modes.get("--server"));
+            new Thread(() -> TestServer.launch(modes.get("--server"))).start();
+            anyValidArguments = true;
+        }
+
 
         if(!anyValidArguments)
             System.out.println("Invalid program!\n" + listPrograms());

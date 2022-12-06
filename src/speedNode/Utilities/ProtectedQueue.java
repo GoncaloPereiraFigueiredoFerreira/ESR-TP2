@@ -43,10 +43,11 @@ public class ProtectedQueue<X> {
     public boolean pushElem(X elem){
         try{
             rwLock.writeLock().lock();
-            return queue.add(elem);
+            boolean ret = queue.add(elem);
+            cond.signal();
+            return ret;
         }finally {
             rwLock.writeLock().unlock();
-            cond.signal();
         }
     }
     public X peekHead(){
@@ -72,10 +73,8 @@ public class ProtectedQueue<X> {
             rwLock.writeLock().lock();
             while (this.length() == 0) {
                 // Fica bloqueado a espera de pacotes na queue
-                try {
-                    cond.await();
-                } catch (InterruptedException ignored) {
-                }
+                try { cond.await(); }
+                catch (InterruptedException ignored) {                }
             }
         }finally {
             rwLock.writeLock().unlock();
