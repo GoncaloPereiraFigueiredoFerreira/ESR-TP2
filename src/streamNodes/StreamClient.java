@@ -5,6 +5,10 @@ package streamNodes;/* ------------------
    colocar o cliente primeiro a correr que o servidor dispara logo!
    ---------------------- */
 
+import speedNode.Utilities.TaggedConnection.Frame;
+import speedNode.Utilities.TaggedConnection.TaggedConnection;
+import speedNode.Utilities.Tags;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -15,6 +19,7 @@ import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Socket;
 import java.net.SocketException;
 
 public class StreamClient {
@@ -44,7 +49,11 @@ public class StreamClient {
     //--------------------------
     //Constructor
     //--------------------------
-    public StreamClient() {
+    public StreamClient(String speedNodeIP, int tcpPort) {
+
+
+        //Contactar o servidor primeiro antes da GUI aparecer
+        contactSpeedNode(speedNodeIP,tcpPort);
 
         //build GUI
         //--------------------------
@@ -81,6 +90,8 @@ public class StreamClient {
         f.setSize(new Dimension(390,370));
         f.setVisible(true);
 
+
+
         //init para a parte do cliente
         //--------------------------
         cTimer = new Timer(20, new clientTimerListener());
@@ -95,6 +106,8 @@ public class StreamClient {
         } catch (SocketException e) {
             System.out.println("Cliente: erro no socket: " + e.getMessage());
         }
+
+
     }
 
     //------------------------------------
@@ -102,8 +115,49 @@ public class StreamClient {
     //------------------------------------
     public static void main(String argv[]) throws Exception
     {
-        StreamClient t = new StreamClient();
+        int tcpPort = 54321;
+        String ip ="";
+        if (argv.length >= 1) {
+            ip = argv[0];
+            try {
+                tcpPort = argv.length >= 2 ? Integer.parseInt(argv[1]) : 54321;
+            }catch (NumberFormatException e){
+                System.out.println("Client: Número de port não reconhecido!");
+            }
+            System.out.println("Client: Endereço IP indicado como parametro: " + ip);
+            System.out.println("Client: Port TCP indicado como parametro: " + tcpPort);
+            StreamClient t = new StreamClient(ip,tcpPort);
+        }
+        else {
+            System.out.println("Client: Parametro 'IP do SpeedNode' em falta!");
+        }
     }
+
+
+
+    private int contactSpeedNode(String ipNode, int tcpPort){
+        try{
+            Socket s = new Socket(ipNode, tcpPort);
+            TaggedConnection tc = new TaggedConnection(s);
+            s.setSoTimeout(10000);
+
+            tc.send(0, Tags.CONNECT_AS_CLIENT_EXCHANGE,new byte[]{});
+            System.out.println("Client: A espera de resposta do SpeedNode");
+            Frame frame=  tc.receive();
+            if(frame.getTag()==Tags.CONNECT_AS_CLIENT_EXCHANGE){
+                System.out.println("Client: SpeedNode contactado");
+                return 1;
+            }
+            else return -1;
+
+        }catch (IOException ioe){
+
+            ioe.printStackTrace();
+            return -1;
+        }
+    }
+
+
 
 
     //------------------------------------

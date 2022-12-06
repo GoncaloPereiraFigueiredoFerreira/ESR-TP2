@@ -5,6 +5,10 @@ package streamNodes;/* ------------------
    colocar primeiro o cliente a correr, porque este dispara logo
    ---------------------- */
 
+import speedNode.Utilities.TaggedConnection.Frame;
+import speedNode.Utilities.TaggedConnection.TaggedConnection;
+import speedNode.Utilities.Tags;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -12,10 +16,8 @@ import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
+import java.io.IOException;
+import java.net.*;
 
 
 public class StreamServer extends JFrame implements ActionListener {
@@ -47,7 +49,7 @@ public class StreamServer extends JFrame implements ActionListener {
     //--------------------------
     //Constructor
     //--------------------------
-    public StreamServer(String speedNodeIP, int portNumber) {
+    public StreamServer(String speedNodeIP, int udpPort, int tcpPort) {
         //init Frame
         super("Servidor");
 
@@ -60,7 +62,7 @@ public class StreamServer extends JFrame implements ActionListener {
         try {
             RTPsocket = new DatagramSocket(); //init RTP socket
             ClientIPAddr = InetAddress.getByName(speedNodeIP); //CHANGED
-            RTP_dest_port = portNumber;  //ADDED
+            RTP_dest_port = udpPort;  //ADDED
             System.out.println("Servidor: socket " + ClientIPAddr);
             video = new VideoStream(VideoFileName); //init the VideoStream object:
             System.out.println("Servidor: vai enviar video da file " + VideoFileName);
@@ -82,7 +84,15 @@ public class StreamServer extends JFrame implements ActionListener {
         //GUI:
         label = new JLabel("Send frame #        ", JLabel.CENTER);
         getContentPane().add(label, BorderLayout.CENTER);
-        sTimer.start();
+
+        int ret = contactSpeedNode(tcpPort);
+        if (ret==1) sTimer.start();
+        else {
+            System.out.println("Servidor: Erro no contacto com o SpeedNode");
+            System.exit(-1);
+        }
+        //Inicia a stream
+
     }
 
     //------------------------------------
@@ -91,20 +101,22 @@ public class StreamServer extends JFrame implements ActionListener {
     public static void main(String argv[]) throws Exception
     {
         String ip;
-        int port=50000;
+        int udpPort=50000;
+        int tcpPort=54321;
         //get video filename to request:
         if (argv.length >= 1){
             ip = argv[0];
             VideoFileName = argv.length >= 2 ?argv[1]:"movie.Mjpeg";
-            port=50000;
             try {
-                port = argv.length >= 3 ? Integer.parseInt(argv[2]) : 50000;
+                udpPort = argv.length >= 3 ? Integer.parseInt(argv[2]) : 50000;
+                tcpPort = argv.length >= 4 ? Integer.parseInt(argv[3]) : 54321;
             }catch (NumberFormatException e){
                 System.out.println("Servidor: Número de port não reconhecido!");
             }
             System.out.println("Servidor: IP indicado como parametro: " + ip);
             System.out.println("Servidor: VideoFileName indicado como parametro: " + VideoFileName);
-            System.out.println("Servidor: Port indicado como parametro: " + port);
+            System.out.println("Servidor: Port UDP indicado como parametro: " + udpPort);
+            System.out.println("Servidor: Port TCP indicado como parametro: " + tcpPort);
         }
         else  {
            System.out.println("Parâmetros insuficientes!! Execute: streamServer <ip speed node> <streamed file> <port_number>");
@@ -114,7 +126,7 @@ public class StreamServer extends JFrame implements ActionListener {
         File f = new File(VideoFileName);
         if (f.exists()) {
             //Create a Main object
-            StreamServer s = new StreamServer(ip,port);
+            StreamServer s = new StreamServer(ip,udpPort,tcpPort);
             //show GUI: (opcional!)
             //s.pack();
             //s.setVisible(true);
@@ -123,7 +135,31 @@ public class StreamServer extends JFrame implements ActionListener {
         while (true){}
     }
 
-    //------------------------
+    private int contactSpeedNode(int tcpPort){
+        try{
+            //PORT tem de ser o do tcp
+            Socket s = new Socket(ClientIPAddr, tcpPort);
+            TaggedConnection tc = new TaggedConnection(s);
+            s.setSoTimeout(10000);
+
+            tc.send(0, Tags.CONNECT_AS_SERVER_EXCHANGE,new byte[]{});
+
+            System.out.println("Servidor: A espera de resposta do SpeedNode... ");
+            Frame frame=  tc.receive();
+            if(frame.getTag()==Tags.CONNECT_AS_SERVER_EXCHANGE){
+                System.out.println("Servidor: SpeedNode contactado! ");
+                // a ligação dps pode ser fechada
+                return 1;
+            }
+            else return -1;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return -1;
+        }
+    }
+
+
+        //------------------------
     //Handler for timer
     //------------------------
     public void actionPerformed(ActionEvent e) {
