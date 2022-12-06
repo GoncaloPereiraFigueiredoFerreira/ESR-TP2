@@ -24,6 +24,21 @@ public class FloodControl {
     }
 
     /**
+     * @param server IP of the server that started the flood
+     * @return next flood index for the given server. If no index has been registered, then the value given is 0.
+     */
+    public int getNextFloodIndex(String server){
+        try {
+            lock.lock();
+            Integer currentIndex = floodIndexes.get(server);
+            if(currentIndex == null || currentIndex == Integer.MAX_VALUE)
+                return 0;
+            else
+                return ++currentIndex;
+        }finally { lock.unlock(); }
+    }
+
+    /**
      * If the flood index, of the frame received, is valid, registers that the node has sent the frame of the current flood
      * @param server Server that started the flood
      * @param node Node that sent the flood frame
@@ -35,7 +50,7 @@ public class FloodControl {
             lock.lock();
             Integer currentIndex = updateFloodVars(server, index);
 
-            //If the current index is not the same as the index given, the changes are rejected , and the current flood index is returned
+            //If the current index is not the same as the index given, the changes are rejected
             if(currentIndex != index)
                 return false;
 
