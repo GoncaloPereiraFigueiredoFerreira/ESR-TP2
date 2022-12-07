@@ -16,6 +16,7 @@ public class TransmitionWorker implements Runnable{
     private final ProtectedQueue<DatagramPacket> outputQueue = new ProtectedQueue<>();
     private DatagramSocket ds;
     private static final int PORT=50000;
+    private static final int CLPORT = 25000;
     public static final int MAX_UDP_P_SIZE = 15000; // To be defined
 
     public TransmitionWorker(INeighbourTableAntiga neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
@@ -115,7 +116,7 @@ public class TransmitionWorker implements Runnable{
                 List<String> clientList = this.clientTable.getAllClients();
                 for (String ipDest : clientList) {
                     try {
-                        DatagramPacket output = new DatagramPacket(newPackage.getPayload(), newPackage.getPayloadLength(), InetAddress.getByName(ipDest), PORT);
+                        DatagramPacket output = new DatagramPacket(newPackage.getPayload(), newPackage.getPayloadLength(), InetAddress.getByName(ipDest), CLPORT);
                         // Coloca datagrama na queue para envio
                         outputQueue.pushElem(output);
                     } catch (UnknownHostException ignored) {}
