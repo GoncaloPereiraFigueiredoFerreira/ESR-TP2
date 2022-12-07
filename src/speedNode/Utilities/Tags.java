@@ -16,6 +16,8 @@ public class Tags {
     public final static int FLOOD = 11;
     public final static int ACTIVATE_ROUTE = 12;
     public final static int DEACTIVATE_ROUTE = 13;
-    public final static int UPDATE_ROUTING_TABLE = 14;
-    public final static int CLOSE_CONNECTION = 15;
+    public final static int RESPONSE_ACTIVATE_ROUTE = 14;
+    public final static int RESPONSE_DEACTIVATE_ROUTE = 15;
+
+    public final static int CLOSE_CONNECTION = 16;
 }

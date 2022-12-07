@@ -13,7 +13,7 @@ import java.util.logging.Logger;
 
 import speedNode.Utilities.TaggedConnection.Frame;
 
-//TODO - verificar como é a situacao de um nodo ser servidor e cliente
+//TODO - verificar como Ã© a situacao de um nodo ser servidor e cliente
 public class ControlWorker implements Runnable{
     //Logger
     private final Logger logger;
@@ -21,18 +21,18 @@ public class ControlWorker implements Runnable{
     //Bootstrap info
     private final String bootstrapIP;
     private final int bootstrapPort = 12345;
-    private int timeToWaitForBootstrap = 5 * 60 * 1000;
+    private int timeToWaitForBootstrap = 5 * 60 * 1000; //Waiting time for a packet after the connection is established, after which the connection should be dropped
 
     //Self info
     private final String bindAddress;
     private final int ssPort = 54321;
     private ServerSocket ss;
-    private int timeToWaitForNeighbour = 5 * 60 * 1000;
+    private int timeToWaitForClient = 5 * 60 * 1000; //Waiting time for a packet after the connection is established, after which the connection should be dropped
 
     //Tables
-    private INeighbourTable neighbourTable;
-    private IRoutingTable routingTable;
-    private IClientTable clientTable;
+    private final INeighbourTable neighbourTable;
+    private final IRoutingTable routingTable;
+    private final IClientTable clientTable;
 
     // Queue with frames to be handled by the main control thread
     // Tuple : (ip of who sent the frame, frame)
@@ -107,7 +107,7 @@ public class ControlWorker implements Runnable{
 
         //Connect to bootstrap
         Socket s = createSocket(bootstrapIP, bootstrapPort);
-        s.setSoTimeout(timeToWaitForBootstrap);
+        s.setSoTimeout(timeToWaitForBootstrap); //Sets the waiting time for a packet after the connection is established, after which the connection is dropped
         TaggedConnection tc = new TaggedConnection(s);
 
         logger.info("Connected to bootstrap.");
@@ -164,7 +164,7 @@ public class ControlWorker implements Runnable{
             //Creating socket to contact neighbour
             logger.info("Creating socket to contact neighbour " + neighbour + "...");
             s = createSocket(neighbour, ssPort);
-            s.setSoTimeout(timeToWaitForNeighbour); //Sets the waiting time till the connection is established, after which the connection is dropped
+            s.setSoTimeout(timeToWaitForClient); //Sets the waiting time till the connection is established, after which the connection is dropped
             TaggedConnection tc = new TaggedConnection(s);
             logger.info("Created socket to contact neighbour " + neighbour + ".");
 
@@ -240,7 +240,7 @@ public class ControlWorker implements Runnable{
             try {
                 String contact = s.getInetAddress().getHostAddress();
                 logger.info("New connection from " + contact);
-                s.setSoTimeout(timeToWaitForNeighbour);
+                s.setSoTimeout(timeToWaitForClient);
                 TaggedConnection tc = new TaggedConnection(s);
 
                 Thread t = new Thread(() -> {
@@ -435,11 +435,57 @@ public class ControlWorker implements Runnable{
     /* ****** Activate best route ****** */
 
     //TODO - acabar activateBestRoute
-    private void activateBestRoute() throws IOException{
+    //tentar ativar,
+    //  ->se n conseguir, enviar a dizer q n é possivel,
+    //  ->se conseguir enviar a dizer q conseguiu
+    //preciso desativar rota se for mudada
+    private void activateBestRoute(String requester) throws IOException{
 
-        var oldProvidingIP = routingTable.getActiveRoute().snd;
-        routingTable.activateBestRoute();
-        var newProvidingIP = routingTable.getActiveRoute().snd;
+        //Is directly connected to a server
+        if(requester != null && clientTable.getAllServers().size() != 0){
+            ConnectionHandler ch = neighbourTable.getConnectionHandler(requester);
+            TaggedConnection tc = ch.getTaggedConnection();
+            tc.send(0,Tags.RESPONSE_ACTIVATE_ROUTE, Serialize.serializeBoolean(true)); //Confirms the activation of the route
+        }
+        //Is directly connected to a client
+        else //if(clientTable.getAllClients().size() != 0)
+        {
+            Tuple<String, String> prevRoute = routingTable.getActiveRoute();
+            Tuple<String, String> newRoute = routingTable.activateBestRoute();
+
+            var oldProvidingIP = prevRoute.fst;
+            var newProvidingIP = newRoute.fst;
+
+
+
+            if(oldProvidingIP.equals(newProvidingIP)){
+
+            }
+        }
+
+
+
+
+        /*
+            Situacoes:
+                -> Cliente
+                -> Nodo intermedio
+                -> Server
+
+            - Cliente/Nodo Intermedio:
+                - Tentar mudar
+                    - Ficar igual -> pedir ao proximo nodo
+                    - Muda -> pedir ao novo provider para ativar e desativar rota antiga depois da nova rota estar ativa
+                    - N tem rota disponivel -> n faz nada
+
+            -Server:
+                - Mandar ACK de ativacao para quem pediu a ativacao da rota
+         */
+
+
+
+        var oldProvidingIP = routingTable.getActiveRoute().fst;
+        var newProvidingIP = routingTable.getActiveRoute().fst;
 
         ConnectionHandler newProvCH = neighbourTable.getConnectionHandler(newProvidingIP);
         TaggedConnection newProvTC = newProvCH == null ? null : newProvCH.getTaggedConnection();
@@ -515,6 +561,8 @@ public class ControlWorker implements Runnable{
             routingTable.addServerPath(serverIp, ip, jumps, (float) time / 1000f, false);
             //signals all threads waiting to activate a route
             readyToActivateRoutes.setAndSignalAll(true);
+
+            routingTable.printTables(); //TODO - remover aqui
         }
     }
 
@@ -586,7 +634,7 @@ public class ControlWorker implements Runnable{
             String oldProvidingIP = routingTable.getActiveRoute().snd;
             ConnectionHandler ch = neighbourTable.getConnectionHandler(oldProvidingIP);
 
-            if(ch!=null && ch.isRunning())
+            if(ch != null && ch.isRunning())
                 ch.getTaggedConnection().send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
         }
     }
@@ -620,6 +668,4 @@ public class ControlWorker implements Runnable{
             catch (InterruptedException ignored) {}
         }
     }
-
-
 }
