@@ -21,7 +21,7 @@ public class ConnectionHandler implements Runnable{
     private final Logger logger;
 
     //Timeouts Control
-    private int socketTimeout = 300;
+    private int socketTimeout = 250;
     private int timeoutsUntilConCheck = 10; //nr of timeouts until connection check
     private int timeoutsCounter = 0;
     private boolean timeoutCheck = false;
@@ -43,13 +43,8 @@ public class ConnectionHandler implements Runnable{
     }
 
     public void run() {
-        //Tries to set socket timeout. If an exception occurs, performs the close operation.
-        if(!setSocketTimeout(socketTimeout)) {
-            close();
-            return;
-        }
-
         logger.info(neighbour + "'s connection receiver running...");
+        setSocketTimeout(socketTimeout);
 
         while (keepRunning) {
             Frame frame;
@@ -60,57 +55,69 @@ public class ConnectionHandler implements Runnable{
                     connection.send(0, Tags.CONNECTION_CHECK, new byte[]{});
 
                 frame = connection.receive();
-                timeoutsCounter = 0; //resets timeout counter
-                timeoutCheck = false; //resets the flag to avoid performing a connection check
+                resetTimeoutVariables();
 
-                int tag = frame.getTag();
-
-                switch (tag){
-                    //Sends a frame to confirm the connection is alive
-                    case Tags.CONNECTION_CHECK -> connection.send(0, Tags.CONNECTION_CONFIRMATION, new byte[]{});
-                    //Connection confirmation frame is only to confirm the connection, and serves its purpose when the
-                    // frame is received, since the timeout variables are reset
-                    case Tags.CONNECTION_CONFIRMATION -> {}
-                    //Closes the connection if tag received asks for it
-                    case Tags.CLOSE_CONNECTION -> {
-                        logger.info(neighbour + " asked to close connection!");
-                        close();
-                        return;
-                    }
-                    //Inserts frame in queue
-                    default -> {
-                        framesInputQueue.pushElem(new Tuple<>(neighbour, frame));
-                        logger.info("Received frame from " + neighbour + " with tag " + frame.getTag());
-                    }
-                }
+                handleFrame(frame);
             }
             catch (SocketTimeoutException | EOFException e){
-                //Next two lines is a way of reseting the counter and avoiding the overflow
-                timeoutsCounter++;
-                timeoutsCounter %= timeoutsUntilConCheck;
-
-                //When the timeout reachs 0, a connection check is needed
-                if(timeoutsCounter == 0) {
-                    if(timeoutCheck){
-                        logger.warning("Connection check failed for neighbour " + neighbour);
-                        close();
-                        return;
-                    }
-                    timeoutCheck = true; //sets flag indicating the need to perform a timeoutCheck
-                }
+                updateTimeoutVariables();
             }
             catch (SocketException se){
                 logger.warning("Socket Exception in " + neighbour + "'s receiver.");
-                close();
+                keepRunning = false;
             }
-            //catch (SocketTimeoutException ste) {}*/
             catch(IOException ignored) {}
 
             //Checks if the thread has been interrupted. If so, then performs the closing procedure and terminates
             if (Thread.interrupted()) {
                 logger.warning(neighbour + "'s receiver got interruped.");
-                close();
-                return;
+                keepRunning = false;
+            }
+        }
+
+        close();
+    }
+
+    /* ***** Auxiliary Methods ***** */
+
+    private void resetTimeoutVariables(){
+        timeoutsCounter = 0; //resets timeout counter
+        timeoutCheck = false; //resets the flag to avoid performing a connection check
+    }
+
+    public void updateTimeoutVariables(){
+        //Next two lines is a way of reseting the counter and avoiding the overflow
+        timeoutsCounter++;
+        timeoutsCounter %= timeoutsUntilConCheck;
+
+        //When the timeout reachs 0, a connection check is needed
+        if(timeoutsCounter == 0) {
+            if(timeoutCheck){
+                logger.warning("Connection check failed for neighbour " + neighbour);
+                keepRunning = false;
+            }
+            timeoutCheck = true; //sets flag indicating the need to perform a timeoutCheck
+        }
+    }
+
+    private void handleFrame(Frame frame) throws IOException {
+        int tag = frame.getTag();
+
+        switch (tag){
+            //Sends a frame to confirm the connection is alive
+            case Tags.CONNECTION_CHECK -> connection.send(0, Tags.CONNECTION_CONFIRMATION, new byte[]{});
+            //Connection confirmation frame is only to confirm the connection, and serves its purpose when the
+            // frame is received, since the timeout variables are reset
+            case Tags.CONNECTION_CONFIRMATION -> {}
+            //Closes the connection if tag received asks for it
+            case Tags.CLOSE_CONNECTION -> {
+                logger.info(neighbour + " asked to close connection!");
+                keepRunning = false;
+            }
+            //Inserts frame in queue
+            default -> {
+                framesInputQueue.pushElem(new Tuple<>(neighbour, frame));
+                logger.info("Received frame from " + neighbour + " with tag " + frame.getTag());
             }
         }
     }
@@ -131,6 +138,8 @@ public class ConnectionHandler implements Runnable{
         try { connection.close(); }
         catch (Exception ignored){}
 
+        removeRoutes();
+
         logger.info("Closed receiver for " + neighbour + ".");
     }
 
@@ -139,25 +148,34 @@ public class ConnectionHandler implements Runnable{
 
     }
 
-    // GETTERS
+
+    /* ***** Getters ***** */
+
     private Socket getSocket() { return connection.getSocket(); }
     public TaggedConnection getTaggedConnection() { return connection; }
     public boolean isRunning() { return keepRunning; }
 
-    // SETTERS
+    /* ***** Setters ***** */
+
     public void setTaggedConnection(TaggedConnection connection) { this.connection = connection; }
 
     public boolean setSocketTimeout(int socketTimeout) {
+        boolean ret;
         this.socketTimeout = socketTimeout;
 
         try {
             connection.getSocket().setSoTimeout(socketTimeout);
             logger.info("Socket Timeout set to " + socketTimeout + "ms.");
-            return true;
+            ret = true;
         } catch (Exception e) {
             logger.warning("Exception occured while trying to set socket timeout. " +
                     "Could not start connection receiver for neighbour " + neighbour);
-            return false;
+            ret = false;
         }
+
+        //If there was a problem setting the socket timeout, then the receiver should be closed.
+        if(!ret) keepRunning = false;
+
+        return ret;
     }
 }
