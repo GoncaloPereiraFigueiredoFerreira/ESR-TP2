@@ -10,11 +10,15 @@ public class RoutingTable implements IRoutingTable{
     /**
      * Table that contains the columns:
      *
-     *     IP of the server | IP of the Providing Neighbour | Nº Jumps till server |   Time till Server   |  Flag : Is route active
+     *    IP of the Providing Neighbour  |  IP of the server  |  Nº Jumps till server  |  Time till Server  |  Flag : Is route active
      *
      */
     private final HashMap<Tuple<String,String>, Tuple<Integer,Float>> metricsTable = new HashMap<>();
     private final HashMap<Tuple<String,String>, Boolean> activeRoute = new HashMap<>();
+
+    /**
+     *  IP of the providing neighbour | List of the servers that can be accessed by the neighbour
+     */
     private final HashMap<String, List<String>> providers = new HashMap<>();
 
     private final ReadWriteLock readWriteLockMetrics = new ReentrantReadWriteLock();
@@ -131,7 +135,7 @@ public class RoutingTable implements IRoutingTable{
     }
 
     @Override
-    public boolean activateBestRoute() {
+    public Tuple<String, String> activateBestRoute() {
         try{
             this.readWriteLockMetrics.readLock().lock();
             float wiggleRoom = 0.05f;
@@ -148,7 +152,11 @@ public class RoutingTable implements IRoutingTable{
             }
 
             assert bestRoute != null;
-            return activateRoute(bestRoute.fst,bestRoute.snd);
+
+            if(activateRoute(bestRoute.fst,bestRoute.snd))
+                return bestRoute;
+            else
+                return null;
         }finally {
             this.readWriteLockMetrics.readLock().unlock();
         }

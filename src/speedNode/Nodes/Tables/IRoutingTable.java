@@ -49,7 +49,7 @@ public interface IRoutingTable {
 
     public Tuple<String,String> getActiveRoute();
 
-    boolean activateBestRoute();
+    Tuple<String, String> activateBestRoute();
 
     boolean existsInRoutingTable(String ServerIp,String Provider);
 
