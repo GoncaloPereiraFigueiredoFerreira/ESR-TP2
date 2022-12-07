@@ -2,7 +2,7 @@ package speedNode.Nodes.OverlayNode.ControlLayer;
 
 import speedNode.Utilities.LoggingToFile;
 import speedNode.Utilities.*;
-import speedNode.Nodes.Tables.*;
+import speedNode.Nodes.OverlayNode.Tables.*;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
 
 import java.io.EOFException;
@@ -309,6 +309,9 @@ public class ControlWorker implements Runnable{
     private void acceptNewClient(String client, TaggedConnection tc) throws IOException {
         //Adds client to clients' table
         this.clientTable.addNewClient(client);
+
+        System.out.println("Control worker: Cliente a ser adicionado -->"+client);
+
         //Sends frame informing the acceptance of the client //TODO - verificar palavra-passe para seguranca
         tc.send(0, Tags.CONNECT_AS_CLIENT_EXCHANGE, new byte[]{});
 
@@ -434,12 +437,15 @@ public class ControlWorker implements Runnable{
 
     /* ****** Activate best route ****** */
 
-    //TODO - acabar activateBestRoute
+
     //tentar ativar,
     //  ->se n conseguir, enviar a dizer q n é possivel,
     //  ->se conseguir enviar a dizer q conseguiu
     //preciso desativar rota se for mudada
-    private void activateBestRoute(String requester) throws IOException{
+    /*
+    private void activateBestRouteVOLD(String requester) throws IOException{
+
+
 
         //Is directly connected to a server
         if(requester != null && clientTable.getAllServers().size() != 0){
@@ -453,20 +459,32 @@ public class ControlWorker implements Runnable{
             Tuple<String, String> prevRoute = routingTable.getActiveRoute();
             Tuple<String, String> newRoute = routingTable.activateBestRoute();
 
-            var oldProvidingIP = prevRoute.fst;
-            var newProvidingIP = newRoute.fst;
+            //prevroute might be null
+            // newroute activates and returns the best route if it has some
 
+            if (prevRoute == null){
+                //activate new route
+                ConnectionHandler newProvCH = neighbourTable.getConnectionHandler(newRoute.fst);
+                TaggedConnection tg = newProvCH.getTaggedConnection();
+                tg.send(0,Tags.ACTIVATE_ROUTE, new byte[]{});
+            }
+            else{
+                // se forem iguais
+                if(newRoute.fst.equals(prevRoute.fst){
+
+                }
+
+            }
 
 
             if(oldProvidingIP.equals(newProvidingIP)){
 
             }
+            else{
+
+            }
         }
 
-
-
-
-        /*
             Situacoes:
                 -> Cliente
                 -> Nodo intermedio
@@ -478,9 +496,8 @@ public class ControlWorker implements Runnable{
                     - Muda -> pedir ao novo provider para ativar e desativar rota antiga depois da nova rota estar ativa
                     - N tem rota disponivel -> n faz nada
 
-            -Server:
-                - Mandar ACK de ativacao para quem pediu a ativacao da rota
-         */
+
+
 
 
 
@@ -510,6 +527,41 @@ public class ControlWorker implements Runnable{
         //  -> nao fazer nada
     }
 
+    */
+
+    //tentar ativar,
+    //  ->se n conseguir, enviar a dizer q n é possivel,
+    //  ->se conseguir enviar a dizer q conseguiu
+    //preciso desativar rota se for mudada
+    private void activateBestRoute() throws IOException {
+
+        //Is directly not connected to a server
+        if (clientTable.getAllServers().size() == 0) {
+            Tuple<String, String> prevRoute = routingTable.getActiveRoute();
+            Tuple<String, String> newRoute = routingTable.activateBestRoute();
+
+            var newProvidingIP = newRoute.snd;
+
+            ConnectionHandler newProvCH = neighbourTable.getConnectionHandler(newProvidingIP);
+            TaggedConnection newProvTC =newProvCH.getTaggedConnection();
+
+            // Se não existia uma rota antes
+            if (prevRoute == null) {
+                newProvTC.send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
+            } else {
+                var oldProvidingIP = prevRoute.snd;
+                ConnectionHandler oldProvCH = neighbourTable.getConnectionHandler(oldProvidingIP);
+                TaggedConnection oldProvTC = oldProvCH.getTaggedConnection();
+                // se forem diferentes
+                if (!newProvidingIP.equals(oldProvidingIP)) {
+                    assert oldProvTC != null;
+                    oldProvTC.send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
+                    newProvTC.send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
+                }
+
+            }
+        }
+    }
 
     /* ****** Flood ****** */
 
