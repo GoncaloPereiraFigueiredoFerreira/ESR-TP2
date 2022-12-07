@@ -52,4 +52,6 @@ public interface IRoutingTable {
     boolean activateBestRoute();
 
     boolean existsInRoutingTable(String ServerIp,String Provider);
+
+    void printTables();
 }

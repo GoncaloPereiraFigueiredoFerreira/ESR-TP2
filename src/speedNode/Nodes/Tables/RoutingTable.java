@@ -165,4 +165,36 @@ public class RoutingTable implements IRoutingTable{
             this.readWriteLockMetrics.readLock().unlock();
         }
     }
+
+    @Override
+    public void printTables() {
+        try{
+            this.readWriteLockProviders.writeLock().lock();
+            this.readWriteLockMetrics.writeLock().lock();
+            this.readWriteLockActive.writeLock().lock();
+
+            System.out.println("\n\n********** Routing tables **********\n");
+
+            //print providers
+            System.out.println("providers={");
+            for(var providerEntry : providers.entrySet())
+                System.out.println("\tprovider(neighbour): " + providerEntry.getKey() + " | servers: " + providerEntry.getValue());
+            System.out.println("}\n");
+
+            //print metrics
+            System.out.println("routes={");
+            for(var metricsEntry : metricsTable.entrySet()) {
+                var tupleNodes = metricsEntry.getKey();
+                var tupleMetrics = metricsEntry.getValue();
+                System.out.println("\tneighbour: " + tupleNodes.fst + " | server: " + tupleNodes.snd + " | jumps: " + tupleMetrics.fst + " | time: " + tupleMetrics.snd + " | active: " + activeRoute.get(tupleNodes));
+            }
+            System.out.println("}\n");
+
+            System.out.println("\n**********************************\n\n");
+        }finally {
+            this.readWriteLockProviders.writeLock().unlock();
+            this.readWriteLockMetrics.writeLock().unlock();
+            this.readWriteLockActive.writeLock().unlock();
+        }
+    }
 }

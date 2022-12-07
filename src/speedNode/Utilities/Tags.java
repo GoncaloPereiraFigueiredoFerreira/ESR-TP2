@@ -1,6 +1,8 @@
 package speedNode.Utilities;
 
 public class Tags {
+    public final static int CONNECTION_CHECK = -1;
+    public final static int CONNECTION_CONFIRMATION = -2;
     public final static int REQUEST_NEIGHBOURS_EXCHANGE = 1;
     public final static int REQUEST_NEIGHBOUR_CONNECTION = 2;
     public final static int RESPONSE_NEIGHBOUR_CONNECTION = 3; // Response to the "request neighbour connection"
