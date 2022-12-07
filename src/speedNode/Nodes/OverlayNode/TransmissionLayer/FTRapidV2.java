@@ -41,7 +41,6 @@ public class FTRapidV2 {
 
         try {
             byte[] typeB = Serialize.serializeInteger(PackType);
-
             byte[] timeStIn   = Serialize.serializeLong(this.InitialTimeSt);
             byte[] timeStJump = Serialize.serializeLong(this.LastJumpTimeSt);
             byte[] jumpB = Serialize.serializeInteger(this.Jumps);

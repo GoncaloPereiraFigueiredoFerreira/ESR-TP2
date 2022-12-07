@@ -18,11 +18,14 @@ public class TransmitionWorker implements Runnable{
     private static final int PORT=50000;
     private static final int CLPORT = 25000;
     public static final int MAX_UDP_P_SIZE = 15000; // To be defined
+    private final String bindAddr ;
 
-    public TransmitionWorker(INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
+    public TransmitionWorker(String bindAddr,INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.clientTable = clientTable;
         this.routingTable = routingTable;
         this.neighbourTable = neighbourTable;
+        this.bindAddr = bindAddr;
+
     }
 
     //TODO: Store all threads in a set, in order to shutdown gracefully
@@ -33,9 +36,8 @@ public class TransmitionWorker implements Runnable{
         // Initialization of the communication Socket
 
         try{
-            this.ds = new DatagramSocket(PORT);
-            System.out.println("TRANSMISSION WORKER: Online !!!!");
-        }catch (SocketException e){
+            this.ds = new DatagramSocket(PORT,InetAddress.getByName(bindAddr));
+        }catch (SocketException | UnknownHostException e){
             System.out.println("Error in Socket initialization!!");
             e.printStackTrace();
             System.exit(-1);
@@ -78,7 +80,6 @@ public class TransmitionWorker implements Runnable{
             }
             // Else if it comes from a neighbour
             else if (this.neighbourTable.getNeighbours().contains(ip)) {
-                System.out.println("TransmissionLayer: Pacote recebido de outro Nodo com IP:"+ ip);
 
                 FTRapidV2 oldPacket = new FTRapidV2(input.getData(), input.getLength());
                 long initTimeSt = oldPacket.getInitialTimeSt();
@@ -101,7 +102,7 @@ public class TransmitionWorker implements Runnable{
 
                 // Send to all neighbours that want the packet
                 List<String> nodeList = neighbourTable.getNeighboursWantingStream();
-                System.out.println("TransmissionLayer: Node list "+ nodeList);
+
                 for (String ipDest : nodeList) {
                     try {
                         DatagramPacket output = new DatagramPacket(newPackage.getData(), newPackage.getLength(), InetAddress.getByName(ipDest), PORT);
@@ -112,7 +113,7 @@ public class TransmitionWorker implements Runnable{
 
                 // Send to all clients
                 List<String> clientList = this.clientTable.getAllClients();
-                System.out.println("TransmissionLayer: Client list "+ clientList);
+
                 for (String ipDest : clientList) {
                     try {
                         DatagramPacket output = new DatagramPacket(newPackage.getPayload(), newPackage.getPayloadLength(), InetAddress.getByName(ipDest), CLPORT);

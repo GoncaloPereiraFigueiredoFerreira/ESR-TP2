@@ -8,6 +8,7 @@ import speedNode.Utilities.TaggedConnection.TaggedConnection;
 import java.io.EOFException;
 import java.io.IOException;
 import java.net.*;
+import java.sql.SQLOutput;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -310,7 +311,7 @@ public class ControlWorker implements Runnable{
         //Adds client to clients' table
         this.clientTable.addNewClient(client);
 
-        System.out.println("Control worker: Cliente a ser adicionado -->"+client);
+
 
         //Sends frame informing the acceptance of the client //TODO - verificar palavra-passe para seguranca
         tc.send(0, Tags.CONNECT_AS_CLIENT_EXCHANGE, new byte[]{});
@@ -543,7 +544,7 @@ public class ControlWorker implements Runnable{
             var newProvidingIP = newRoute.snd;
 
             ConnectionHandler newProvCH = neighbourTable.getConnectionHandler(newProvidingIP);
-            TaggedConnection newProvTC =newProvCH.getTaggedConnection();
+            TaggedConnection newProvTC = newProvCH.getTaggedConnection();
 
             // Se não existia uma rota antes
             if (prevRoute == null) {
@@ -561,6 +562,8 @@ public class ControlWorker implements Runnable{
 
             }
         }
+
+        this.routingTable.printTables();
     }
 
     /* ****** Flood ****** */

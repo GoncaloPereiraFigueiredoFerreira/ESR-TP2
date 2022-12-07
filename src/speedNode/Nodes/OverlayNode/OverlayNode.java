@@ -54,7 +54,7 @@ public class OverlayNode{
         ctrlWorker.start();
 
 
-        TransmitionWorker transmitionWorker = new TransmitionWorker(neighbourTable,routingTable,clientTable);
+        TransmitionWorker transmitionWorker = new TransmitionWorker(args.get(0),neighbourTable,routingTable,clientTable);
         Thread transWorker = new Thread(transmitionWorker);
         transWorker.start();
 

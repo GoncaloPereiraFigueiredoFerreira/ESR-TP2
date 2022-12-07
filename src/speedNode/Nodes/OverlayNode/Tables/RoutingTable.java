@@ -31,7 +31,7 @@ public class RoutingTable implements IRoutingTable{
 
     @Override
     public boolean addServerPath(String ServerIp, String Provider, int Jumps, float Time, boolean active) {
-        Tuple<String, String> temp = new Tuple<>(Provider, ServerIp);
+        Tuple<String, String> temp = new Tuple<>(ServerIp, Provider);
         try {
             readWriteLockProviders.writeLock().lock();
             if (this.providers.containsKey(Provider) && this.providers.get(Provider).contains(ServerIp)) return false;
