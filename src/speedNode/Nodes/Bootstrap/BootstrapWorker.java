@@ -7,6 +7,7 @@ import speedNode.Utilities.Tags;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -61,12 +62,24 @@ public class BootstrapWorker implements Runnable{
     }
 
     public void sendNeighbours(Frame frame) throws IOException {
-        System.out.println(socket.getInetAddress().getHostAddress()); //TODO - tirar print
+        //All ipv4 addresses of the contacting node
+        List<String> nodeAddresses = Serialize.deserializeListOfStrings(frame.getData());
 
-        List<String> vizinhos = sharedInfo.getNeighbours(socket.getInetAddress().getHostAddress());
-        System.out.println(vizinhos);
-        System.out.println(Serialize.deserializeListOfStrings(Serialize.serializeListOfStrings(vizinhos)));
-        connection.send(0,Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(vizinhos));
+        //Gets the neighbours of the contacting node, and finds the interface that the node should use for the overlay
+        //The overlay address is the last element of the response list, following all the node neighbours
+        List<String> responseList = null;
+        for(String address : nodeAddresses){
+            responseList = sharedInfo.getNeighbours(address);
+            if(responseList != null) {
+                responseList.add(address);
+                break;
+            }
+        }
+
+        if(responseList == null)
+            responseList = new ArrayList<>();
+
+        connection.send(0,Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(responseList));
         System.out.println("Sent request with tag " + Tags.REQUEST_NEIGHBOURS_EXCHANGE);
     }
 }

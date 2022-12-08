@@ -43,22 +43,11 @@ public class OverlayNode{
             return;
         }
 
-
         INeighbourTable neighbourTable = new NeighbourTable();
         IRoutingTable routingTable = new RoutingTable();
         IClientTable clientTable = new ClientTable();
 
-
-        ControlWorker controlWorker = new ControlWorker(args.get(0), args.get(1), neighbourTable, routingTable, clientTable);
-        Thread ctrlWorker = new Thread(controlWorker);
-        ctrlWorker.start();
-
-
-        TransmitionWorker transmitionWorker = new TransmitionWorker(args.get(0),neighbourTable,routingTable,clientTable);
-        Thread transWorker = new Thread(transmitionWorker);
-        transWorker.start();
-
-
-
+        ControlWorker controlWorker = new ControlWorker(args.get(0), neighbourTable, routingTable, clientTable);
+        controlWorker.run();
     }
 }

@@ -1,5 +1,6 @@
 package speedNode.Utilities;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.logging.FileHandler;
 import java.util.logging.Handler;
@@ -20,7 +21,7 @@ public class LoggingToFile {
         FileHandler fh;
 
         try {
-            // This block configure the logger with handler and formatter
+            // This block configures the logger with handler and formatter
             fh = new FileHandler(pathToDirectory + logName);
             logger.addHandler(fh);
             SimpleFormatter formatter = new SimpleFormatter();
@@ -32,5 +33,43 @@ public class LoggingToFile {
         }
 
         return logger;
+    }
+
+    public static void changeLogFile(Logger logger, String prevLogName, String prevPathToDir,
+                                     String newLogName, String newPathToDir){
+
+        // File (or directory) with old name
+        File file = new File(prevPathToDir + prevLogName);
+
+        // File (or directory) with new name
+        File file2 = new File(newLogName + newPathToDir);
+
+        boolean success = file2.exists();
+
+        if(success) {
+            // Rename file (or directory)
+            success = file.renameTo(file2);
+            file.delete();
+        }
+
+        if (!success)
+            logger.warning("Could not change log file name from " + prevPathToDir + prevLogName + " to " + newLogName + newPathToDir);
+        else {
+            FileHandler fh;
+            try {
+                //Removes previous file handler
+                logger.removeHandler(logger.getHandlers()[0]);
+
+                // This block configures the logger with the new handler and formatter
+                fh = new FileHandler(newLogName + newPathToDir);
+                logger.addHandler(fh);
+                SimpleFormatter formatter = new SimpleFormatter();
+                fh.setFormatter(formatter);
+            } catch (SecurityException e) {
+                System.out.println("No permission to perform logging.");
+            } catch (IOException ioe) {
+                System.out.println("There was a problem opening the file '" + newLogName + newPathToDir + "'.");
+            }
+        }
     }
 }

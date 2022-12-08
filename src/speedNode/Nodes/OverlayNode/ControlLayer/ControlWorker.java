@@ -1,5 +1,6 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
+import speedNode.Nodes.OverlayNode.TransmissionLayer.TransmitionWorker;
 import speedNode.Utilities.LoggingToFile;
 import speedNode.Utilities.*;
 import speedNode.Nodes.OverlayNode.Tables.*;
@@ -8,7 +9,6 @@ import speedNode.Utilities.TaggedConnection.TaggedConnection;
 import java.io.EOFException;
 import java.io.IOException;
 import java.net.*;
-import java.sql.SQLOutput;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -17,7 +17,7 @@ import speedNode.Utilities.TaggedConnection.Frame;
 //TODO - verificar como Ã© a situacao de um nodo ser servidor e cliente
 public class ControlWorker implements Runnable{
     //Logger
-    private final Logger logger;
+    private Logger logger;
 
     //Bootstrap info
     private final String bootstrapIP;
@@ -25,7 +25,7 @@ public class ControlWorker implements Runnable{
     private int timeToWaitForBootstrap = 5 * 60 * 1000; //Waiting time for a packet after the connection is established, after which the connection should be dropped
 
     //Self info
-    private final String bindAddress;
+    private String bindAddress;
     private final int ssPort = 54321;
     private ServerSocket ss;
     private int timeToWaitForClient = 5 * 60 * 1000; //Waiting time for a packet after the connection is established, after which the connection should be dropped
@@ -51,24 +51,36 @@ public class ControlWorker implements Runnable{
     // true when there is, at least one route to a server
     private final BoolWithLockCond readyToActivateRoutes = new BoolWithLockCond(false);
 
-    public ControlWorker(String bindAddress, String bootstrapIP, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
-        this.bindAddress = bindAddress;
+    public ControlWorker(String bootstrapIP, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.neighbourTable = neighbourTable;
         this.routingTable = routingTable;
         this.clientTable = clientTable;
         this.bootstrapIP = bootstrapIP;
-        this.logger = LoggingToFile.createLogger("OverlayNode" + bindAddress + ".txt", "", true);
     }
 
     @Override
     public void run() {
         try{
+            //Creates logger
+            String initialLogFileName = "OverlayNode" + UUID.randomUUID()  + ".txt";
+            this.logger = LoggingToFile.createLogger(initialLogFileName, "", true);
             logger.info("Running...");
 
+            requestNeighboursAndBindAddress();
+
+            //Changes log file name to something that allows a better identification
+            LoggingToFile.changeLogFile(logger, initialLogFileName, "", "OverlayNode" + bindAddress + ".txt", "");
+
+            //Starts the server socket, which is necessary to establish connections with neighbours
             ss = new ServerSocket(ssPort, 0, InetAddress.getByName(bindAddress));
             logger.info("Server Socket created.");
 
-            requestNeighbours();
+            //Starts transmission thread
+            TransmitionWorker transmitionWorker = new TransmitionWorker(bindAddress,neighbourTable,routingTable,clientTable);
+            Thread transWorker = new Thread(transmitionWorker);
+            transWorker.start();
+            threads.add(transWorker);
+
             startThreadToAttendNewConnections();
             connectToNeighbours();
 
@@ -107,7 +119,8 @@ public class ControlWorker implements Runnable{
         logger.info("Connecting to bootstrap...");
 
         //Connect to bootstrap
-        Socket s = createSocket(bootstrapIP, bootstrapPort);
+        System.out.println("Bootstrap ip: " + bootstrapIP);
+        Socket s = new Socket(bootstrapIP, bootstrapPort);
         s.setSoTimeout(timeToWaitForBootstrap); //Sets the waiting time for a packet after the connection is established, after which the connection is dropped
         TaggedConnection tc = new TaggedConnection(s);
 
@@ -121,12 +134,13 @@ public class ControlWorker implements Runnable{
      * Asks bootstrap for the neighbours
      * @throws IOException if there is any problem with the socket or if the frame received was not the one expected.
      */
-    private void requestNeighbours() throws IOException {
+    private void requestNeighboursAndBindAddress() throws IOException {
         TaggedConnection bootstrapConnection = connectToBootstrap();
 
         //Get neighbours from bootstrap
         logger.info("Requesting neighbours from bootstrap.");
-        bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, new byte[]{});
+        List<String> ipv4s = new ArrayList<>(getNetworkInterfacesIPv4s());
+        bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(ipv4s));
 
         logger.info("Waiting for bootstrap response...");
         Frame neighboursFrame = bootstrapConnection.receive();
@@ -136,7 +150,9 @@ public class ControlWorker implements Runnable{
             throw new IOException("Frame with tag" + Tags.REQUEST_NEIGHBOURS_EXCHANGE + "expected!");
         }
 
+        //Ips of all neighbours followed by the address that should be used for the overlay
         List<String> ips = Serialize.deserializeListOfStrings(neighboursFrame.getData());
+        bindAddress = ips.remove(ips.size() - 1);
         logger.info("[Bootstrap response] neighbours: " + ips);
 
         //Initial fill of neighbours' table
@@ -215,6 +231,26 @@ public class ControlWorker implements Runnable{
         }
     }
 
+    /**
+     * Returns collection of ipv4 addresses associated with the devices interfaces. Loopback excluded.
+     * @return collection of ipv4 addresses associated with the devices interfaces. Loopback excluded.
+     * @throws SocketException
+     */
+    public static Collection<String> getNetworkInterfacesIPv4s() throws SocketException{
+        Collection<String> ipv4s = new HashSet<>();
+        Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
+        for (NetworkInterface netint : Collections.list(nets)) {
+            Enumeration<InetAddress> inetAddresses = netint.getInetAddresses();
+            for(InetAddress inetAddress : Collections.list(inetAddresses)){
+                if(inetAddress instanceof Inet4Address){
+                    String ipv4 = inetAddress.getHostAddress();
+                    if(!ipv4.equals("127.0.0.1"))
+                        ipv4s.add(ipv4);
+                }
+            }
+        }
+        return ipv4s;
+    }
 
     /* ****** Attend New Connections ****** */
 

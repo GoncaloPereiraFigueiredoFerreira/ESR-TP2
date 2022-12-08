@@ -168,7 +168,7 @@ public class ConnectionHandler implements Runnable{
             logger.info("Socket Timeout set to " + socketTimeout + "ms.");
             ret = true;
         } catch (Exception e) {
-            logger.warning("Exception occured while trying to set socket timeout. " +
+            logger.warning("Exception occurred while trying to set socket timeout. " +
                     "Could not start connection receiver for neighbour " + neighbour);
             ret = false;
         }
