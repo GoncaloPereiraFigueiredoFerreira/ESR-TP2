@@ -5,11 +5,14 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class TaggedConnection implements AutoCloseable {
     private final Socket socket;
     private final DataOutputStream dos;
     private final DataInputStream dis;
+    private final ReentrantLock readLock = new ReentrantLock();
+    private final ReentrantLock writeLock = new ReentrantLock();
 
     public TaggedConnection(Socket socket) throws IOException {
         this.socket = socket;
@@ -22,7 +25,12 @@ public class TaggedConnection implements AutoCloseable {
      * @param frame Frame que se deseja enviar
      */
     public void send(Frame frame) throws IOException {
-        send(frame.getNumber(), frame.getTag(),frame.getData());
+        try {
+            writeLock.lock();
+            send(frame.getNumber(), frame.getTag(),frame.getData());
+        }finally {
+            writeLock.unlock();
+        }
     }
 
     /**
@@ -32,11 +40,16 @@ public class TaggedConnection implements AutoCloseable {
      * @param data Conteudo do frame
      */
     public void send(int number, int tag, byte[] data) throws IOException {
-        dos.writeInt(number);
-        dos.writeInt(tag);
-        dos.writeInt(data.length);
-        dos.write(data);
-        dos.flush();
+        try {
+            writeLock.lock();
+            dos.writeInt(number);
+            dos.writeInt(tag);
+            dos.writeInt(data.length);
+            dos.write(data);
+            dos.flush();
+        }finally {
+            writeLock.unlock();
+        }
     }
 
     /**
@@ -49,13 +62,17 @@ public class TaggedConnection implements AutoCloseable {
         int number, tag, dataSize;
         byte[] data;
 
-        number   = dis.readInt();
-        tag      = dis.readInt();
-        dataSize = dis.readInt();
-        data     = new byte[dataSize];
-        dis.readFully(data);
-
-        return new Frame(number, tag, data);
+        try {
+            readLock.lock();
+            number   = dis.readInt();
+            tag      = dis.readInt();
+            dataSize = dis.readInt();
+            data     = new byte[dataSize];
+            dis.readFully(data);
+            return new Frame(number, tag, data);
+        }finally {
+            readLock.unlock();
+        }
     }
 
     /**
