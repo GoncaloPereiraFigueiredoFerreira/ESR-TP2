@@ -87,6 +87,11 @@ public class TransmitionWorker implements Runnable{
                 String serverIP = oldPacket.getServerIP();
                 long currTime = System.currentTimeMillis();
 
+                if (this.clientTable.getAllClients().size() >0){
+                    //verificar se existe delay, e alertar na routing table se sim
+                    //this.routingTable.verifyDelay(serverIP,ip,currTime-initTimeSt);
+                }
+
                 // Updates the routing table with the time it took the packet to reach the current node
                 this.routingTable.updateMetrics(serverIP,ip,jumps,currTime-initTimeSt);
 
@@ -113,7 +118,6 @@ public class TransmitionWorker implements Runnable{
 
                 // Send to all clients
                 List<String> clientList = this.clientTable.getAllClients();
-
                 for (String ipDest : clientList) {
                     try {
                         DatagramPacket output = new DatagramPacket(newPackage.getPayload(), newPackage.getPayloadLength(), InetAddress.getByName(ipDest), CLPORT);

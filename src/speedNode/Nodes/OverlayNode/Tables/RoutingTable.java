@@ -1,9 +1,12 @@
 package speedNode.Nodes.OverlayNode.Tables;
 
+import speedNode.Utilities.BoolWithLockCond;
 import speedNode.Utilities.Tuple;
 
 import java.util.*;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class RoutingTable implements IRoutingTable{
@@ -24,6 +27,10 @@ public class RoutingTable implements IRoutingTable{
     private final ReadWriteLock readWriteLockMetrics = new ReentrantReadWriteLock();
     private final ReadWriteLock readWriteLockActive = new ReentrantReadWriteLock();
     private final ReadWriteLock readWriteLockProviders = new ReentrantReadWriteLock();
+
+    private boolean delay = false;
+    private final ReentrantLock reentrantLock = new ReentrantLock();
+    private final Condition cond = reentrantLock.newCondition();
 
     public RoutingTable(){
 
@@ -143,6 +150,8 @@ public class RoutingTable implements IRoutingTable{
             float minScore = Float.MAX_VALUE;
             Tuple<String,String> bestRoute =null;
 
+            //TODO: Deveria escolher a rota atual preferencialmente
+
             for (Map.Entry<Tuple<String,String>,Tuple<Integer,Float>> entry : this.metricsTable.entrySet()){
                 score = entry.getValue().snd + (entry.getValue().fst * wiggleRoom);
                 if (score < minScore) {
@@ -203,4 +212,41 @@ public class RoutingTable implements IRoutingTable{
             this.readWriteLockActive.writeLock().unlock();
         }
     }
+/*
+    @Override
+    public void verifyDelay(String serverIP, String Provider, long newTime) {
+        // Fazer conta para detetar delay
+        // se foi detetado signalAll
+        try{
+            this.readWriteLockMetrics.readLock().lock();
+
+            var metrics = this.metricsTable.get(new Tuple<>(serverIP,Provider));
+            if (metrics.snd - newTime > 0.05 * metrics.snd){
+                this.cond.signalAll();
+            }
+
+
+
+
+        }finally {
+            this.readWriteLockMetrics.readLock().unlock();
+        }
+
+
+    }
+
+    public void checkDelay(){
+        try{
+            reentrantLock.lock();
+            while(!delay) {
+                try {cond.await();} catch (InterruptedException ignored) {}
+            }
+
+        } finally {
+            delay=false; // quando a thread sair o delay "fica resolvido"
+            reentrantLock.unlock();
+        }
+    }
+    */
+
 }

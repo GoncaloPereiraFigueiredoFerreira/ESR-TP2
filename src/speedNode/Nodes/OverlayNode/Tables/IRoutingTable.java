@@ -54,4 +54,8 @@ public interface IRoutingTable {
     boolean existsInRoutingTable(String ServerIp,String Provider);
 
     void printTables();
+
+    //void verifyDelay(String serverIP, String ip, long l);
+
+    //void checkDelay();
 }

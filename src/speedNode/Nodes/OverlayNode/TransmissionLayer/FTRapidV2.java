@@ -24,8 +24,6 @@ public class FTRapidV2 {
     public int payload_size;
     public byte[] payload;
 
-    //TODO: Implement encryption on payload
-
 
     public FTRapidV2(long initialTimeStamp,long lastJumpTimeSt, int jumps, byte[] rtppacket, int rtpLen,String ServerIp) {
         header = new byte[HEADER_SIZE];
