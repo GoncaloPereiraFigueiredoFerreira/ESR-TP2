@@ -36,7 +36,7 @@ public class LoggingToFile {
     }
 
     public static void changeLogFile(Logger logger, String prevLogName, String prevPathToDir,
-                                     String newLogName, String newPathToDir){
+                                     String newLogName, String newPathToDir) {
 
         // File (or directory) with old name
         File file = new File(prevPathToDir + prevLogName);
@@ -44,32 +44,29 @@ public class LoggingToFile {
         // File (or directory) with new name
         File file2 = new File(newLogName + newPathToDir);
 
-        boolean success = file2.exists();
-
-        if(success) {
-            // Rename file (or directory)
-            success = file.renameTo(file2);
-            file.delete();
+        if (!file.renameTo(file2)) {
+            logger.warning("Could not change log file name from " + prevPathToDir + prevLogName + " to " + newLogName + newPathToDir);
+            return;
         }
 
-        if (!success)
-            logger.warning("Could not change log file name from " + prevPathToDir + prevLogName + " to " + newLogName + newPathToDir);
-        else {
-            FileHandler fh;
-            try {
-                //Removes previous file handler
-                logger.removeHandler(logger.getHandlers()[0]);
+        file.delete();
 
-                // This block configures the logger with the new handler and formatter
-                fh = new FileHandler(newLogName + newPathToDir);
-                logger.addHandler(fh);
-                SimpleFormatter formatter = new SimpleFormatter();
-                fh.setFormatter(formatter);
-            } catch (SecurityException e) {
-                System.out.println("No permission to perform logging.");
-            } catch (IOException ioe) {
-                System.out.println("There was a problem opening the file '" + newLogName + newPathToDir + "'.");
-            }
+        FileHandler fh;
+        try {
+            //Removes previous file handler
+            Handler handlerToRemove = logger.getHandlers()[0];
+            logger.removeHandler(handlerToRemove);
+            handlerToRemove.close();
+
+            // This block configures the logger with the new handler and formatter
+            fh = new FileHandler(newLogName + newPathToDir);
+            logger.addHandler(fh);
+            SimpleFormatter formatter = new SimpleFormatter();
+            fh.setFormatter(formatter);
+        } catch (SecurityException e) {
+            System.out.println("No permission to perform logging.");
+        } catch (IOException ioe) {
+            System.out.println("There was a problem opening the file '" + newLogName + newPathToDir + "'.");
         }
     }
 }
