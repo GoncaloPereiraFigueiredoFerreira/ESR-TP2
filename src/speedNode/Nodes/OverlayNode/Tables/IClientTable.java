@@ -23,12 +23,7 @@ public interface IClientTable {
      * @return Returns true if the operation was concluded successfully
      */
     boolean addNewServer(String Ip);
-    /**
-     * Returns the type of the IP
-     * @param Ip Ip of the client
-     * @return Returns "Client" if it is a client, "Server" if it is a streaming server and "" if the IP is not recognized
-     */
-    String typeOf(String Ip);
+
 
     /**
      * Returns the list of all the connected clients
