@@ -197,4 +197,18 @@ public class NeighbourTable implements INeighbourTable{
     public void writeUnlock(){
         rwlock.writeLock().unlock();
     }
+
+    @Override
+    public void printTable() {
+        try{
+            rwlock.readLock().lock();
+            System.out.println("\nneighboursTable={");
+            for(var entry : neighbours.values()){
+                System.out.println(entry);
+            }
+            System.out.println("}\n");
+        }finally {
+            rwlock.readLock().unlock();
+        }
+    }
 }

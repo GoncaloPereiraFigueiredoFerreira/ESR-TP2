@@ -61,4 +61,13 @@ public class NeighbourEntry {
     public void setTimestamp(long timestamp) {
         this.timestamp = timestamp;
     }
+
+    @Override
+    public String toString() {
+        return "{" +
+                "ip='" + ip + '\'' +
+                ", wantsStream=" + wantsStream +
+                ", timestamp=" + timestamp +
+                '}';
+    }
 }

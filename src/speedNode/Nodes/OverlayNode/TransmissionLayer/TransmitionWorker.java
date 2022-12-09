@@ -56,6 +56,7 @@ public class TransmitionWorker implements Runnable{
 
         // Change this to properly close down worker
         boolean working = true;
+        int i=0;
         while (working) {
 
 
@@ -67,6 +68,8 @@ public class TransmitionWorker implements Runnable{
             // Origin IP of the packet// Had to remove the first character
             String ip = input.getAddress().getHostAddress();
 
+            if (i%100==0) System.out.println("TRANSMISSION: Recebi umm pacote de " + ip);
+            i++;
 
             // Package that will be sent
             FTRapidV2 newPackage = null;
@@ -89,7 +92,7 @@ public class TransmitionWorker implements Runnable{
 
                 if (this.clientTable.getAllClients().size() >0){
                     //verificar se existe delay, e alertar na routing table se sim
-                    this.routingTable.verifyDelay(serverIP,ip,jumps,currTime-initTimeSt);
+                    this.routingTable.verifyDelay(serverIP,ip,jumps+1,currTime-initTimeSt);
                 }
 
 

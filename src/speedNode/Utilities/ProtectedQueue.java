@@ -44,12 +44,10 @@ public class ProtectedQueue<X> {
     public X popElem(long time, TimeUnit timeUnit){
         try{
             rwLock.writeLock().lock();
-            while (this.length() == 0) {
-                // Fica bloqueado a espera de pacotes na queue
-                try { cond.await(time, timeUnit);}
-                catch (InterruptedException ignored) {}
-            }
-            return queue.pop();
+            // Fica bloqueado a espera de pacotes na queue
+            try { cond.await(time, timeUnit);}
+            catch (InterruptedException ignored) {}
+            return queue.size() != 0 ? queue.pop() : null;
         }finally {
             rwLock.writeLock().unlock();
         }

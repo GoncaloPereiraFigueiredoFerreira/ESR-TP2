@@ -47,12 +47,14 @@ public class RoutingHandler implements Runnable {
 
     private void handleRoutingFrame(){
         Tuple<String,Frame> tuple = this.routingFramesQueue.popElem(200, TimeUnit.MILLISECONDS);
-        String requester = tuple.fst;
-        Frame frame = tuple.snd;
-        switch (frame.getTag()){
-            case Tags.ACTIVATE_ROUTE -> handleActivateRoute(requester,frame);
-            case Tags.DEACTIVATE_ROUTE -> handleDeactivateRoute(requester);
-            case Tags.RESPONSE_ACTIVATE_ROUTE -> handleActivateBestRouteResponse(frame);
+        if(tuple != null) {
+            String requester = tuple.fst;
+            Frame frame = tuple.snd;
+            switch (frame.getTag()) {
+                case Tags.ACTIVATE_ROUTE -> handleActivateRoute(requester, frame);
+                case Tags.DEACTIVATE_ROUTE -> handleDeactivateRoute(requester);
+                case Tags.RESPONSE_ACTIVATE_ROUTE -> handleActivateBestRouteResponse(frame);
+            }
         }
     }
 
@@ -66,7 +68,6 @@ public class RoutingHandler implements Runnable {
     private String prevProvIP = null; //Previous provider IP
 
     private void activateBestRoute(String requester, Collection<String> contacted) {
-        System.out.println("Activate Best route: Requester:" + requester);
         if(requester != null) {
             if (contacted != null) {
                 if (contacted.contains(bindAddress)) {
@@ -81,7 +82,7 @@ public class RoutingHandler implements Runnable {
 
         //Is an activate best route already in course?
         if(!activateBestRouteActive){
-
+            System.out.println("Trying to activate best route");
             activateBestRouteActive = true;
 
             //Not a server
@@ -131,6 +132,10 @@ public class RoutingHandler implements Runnable {
                 sendActivateRouteResponse(true);
             }
         }
+
+        System.out.println("*** DEPOIS DE ACTIVATE ROUTE ***");
+        routingTable.printTables(); //TODO - remover aqui
+        neighbourTable.printTable();
     }
 
     private void deactivateRoute(String provider, String requester){
@@ -152,6 +157,10 @@ public class RoutingHandler implements Runnable {
 
             routingTable.deactivateRoute(provider);
         }
+
+        System.out.println("*** DEPOIS DE DEACTIVATE ROUTE ***");
+        routingTable.printTables(); //TODO - remover aqui
+        neighbourTable.printTable();
     }
 
     private void handleActivateBestRouteResponse(Frame frame){
@@ -166,7 +175,10 @@ public class RoutingHandler implements Runnable {
                 System.out.println("Desativando rota anterior : " + prevProvIP);
                 deactivateRoute(prevProvIP, null);
             }
-            else activateBestRoute(null, null);
+            else {
+                activateBestRouteActive = false;
+                activateBestRoute(null, null);
+            }
 
         }catch (IOException ioe){ return; }
     }
@@ -198,30 +210,34 @@ public class RoutingHandler implements Runnable {
      * @throws IOException
      */
     private void sendActivateRouteResponse(boolean response){
-        Collection<String> neighboursToContact = neighbourTable.getConnectedNeighbours()
-                                                               .stream()
-                                                               .filter(requesters::contains)
-                                                               .collect(Collectors.toSet());
-
-        for (String n : neighboursToContact) {
-            try {
-                TaggedConnection tc = neighbourTable.getConnectionHandler(n).getTaggedConnection();
-                tc.send(0, Tags.RESPONSE_ACTIVATE_ROUTE, Serialize.serializeBoolean(response));
-                if(response) neighbourTable.updateWantsStream(n, true);
-            }catch (IOException ignored){}
-        }
-
-        activateBestRouteActive = false;
-        nodesActivateRoute.clear();
-        nodesAskedToActivateRoute.clear();
-        requesters.clear();
         try {
-            routeUpdateLock.lock();
-            routeUpdateCond.signalAll();
-            System.out.println("\nSIGNALED ROUTE UPDATE\n");
-        }finally { routeUpdateLock.unlock(); }
+            Collection<String> neighboursToContact = neighbourTable.getNeighbours()
+                    .stream()
+                    .filter(requesters::contains)
+                    .collect(Collectors.toSet());
 
-        routingTable.printTables(); //TODO - remover aqui
+            for (String n : neighboursToContact) {
+                try {
+                    TaggedConnection tc = neighbourTable.getConnectionHandler(n).getTaggedConnection();
+                    tc.send(0, Tags.RESPONSE_ACTIVATE_ROUTE, Serialize.serializeBoolean(response));
+                    if (response) neighbourTable.updateWantsStream(n, true);
+                } catch (Exception ignored) {}
+            }
+        }finally {
+            activateBestRouteActive = false;
+            nodesActivateRoute.clear();
+            nodesAskedToActivateRoute.clear();
+            requesters.clear();
+            try {
+                routeUpdateLock.lock();
+                routeUpdateCond.signalAll();
+                System.out.println("\nSIGNALED ROUTE UPDATE\n");
+            }finally { routeUpdateLock.unlock(); }
+
+            System.out.println("*** DEPOIS DE SEND ACTIVATE ROUTE RESPONSE ***");
+            routingTable.printTables(); //TODO - remover aqui
+            neighbourTable.printTable();
+        }
     }
 
 

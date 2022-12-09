@@ -21,7 +21,7 @@ public class ConnectionHandler implements Runnable{
     private final Logger logger;
 
     //Timeouts Control
-    private int socketTimeout = 250;
+    private int socketTimeout = 1000000;
     private int timeoutsUntilConCheck = 10; //nr of timeouts until connection check
     private int timeoutsCounter = 0;
     private boolean timeoutCheck = false;

@@ -210,9 +210,11 @@ public class RoutingTable implements IRoutingTable{
             for (Map.Entry<Tuple<String,String>,Tuple<Integer,Float>> entry : this.metricsTable.entrySet()){
                 if (!excluded.contains(entry.getKey().snd) ) { // if neighbour isn't excluded from being the best route
                     score = entry.getValue().snd + (entry.getValue().fst * wiggleRoom);
+                    System.out.println("SCORE for neighbour: " + entry.getKey() + " -> " + score);
                     if (score < minScore) {
                         minScore = score;
                         bestRoute = entry.getKey();
+                        System.out.println("Melhor score: " + entry.getKey());
                     }
                 }
             }
@@ -301,7 +303,7 @@ public class RoutingTable implements IRoutingTable{
             reentrantLock.lock();
             return delay;
         } finally {
-            delay=false; // quando a thread sair o delay "fica resolvido"
+            delay = false; // quando a thread sair o delay "fica resolvido"
             reentrantLock.unlock();
         }
     }

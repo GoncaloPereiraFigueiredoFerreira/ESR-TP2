@@ -130,5 +130,5 @@ public interface INeighbourTable {
     void writeUnlock();
 
 
-
+    void printTable();
 }
