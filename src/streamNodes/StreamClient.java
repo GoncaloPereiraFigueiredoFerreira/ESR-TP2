@@ -148,6 +148,10 @@ public class StreamClient {
                 System.out.println("Client: SpeedNode contactado");
                 return 1;
             }
+            else if(frame.getTag()==Tags.CANCEL_STREAM){
+                System.out.println("Client: SpeedNode sem rotas disponíveis!");
+                return -1;
+            }
             else return -1;
 
         }catch (IOException ioe){

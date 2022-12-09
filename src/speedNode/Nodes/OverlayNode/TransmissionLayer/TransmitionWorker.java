@@ -89,11 +89,14 @@ public class TransmitionWorker implements Runnable{
 
                 if (this.clientTable.getAllClients().size() >0){
                     //verificar se existe delay, e alertar na routing table se sim
-                    //this.routingTable.verifyDelay(serverIP,ip,currTime-initTimeSt);
+                    boolean flag= this.routingTable.verifyDelay(serverIP,ip,currTime-initTimeSt);
+
+                    // Updates the routing table with the time it took the packet to reach the current node
+                    if (flag) this.routingTable.updateMetrics(serverIP,ip,jumps,currTime-initTimeSt);
                 }
 
-                // Updates the routing table with the time it took the packet to reach the current node
-                this.routingTable.updateMetrics(serverIP,ip,jumps,currTime-initTimeSt);
+
+
 
                 // Update neighbour jump // Here we could detect a delay in the jump
                 this.neighbourTable.updateLastJumpTime(ip,currTime - oldPacket.getLastJumpTimeSt());

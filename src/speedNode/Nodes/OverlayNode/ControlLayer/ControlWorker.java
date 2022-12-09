@@ -45,11 +45,10 @@ public class ControlWorker implements Runnable{
     // To keep track of the neighbours that were sent the flood msg
     private final FloodControl floodControl = new FloodControl();
 
+    private RoutingHandler routingHandler;
+
     //Child threads will use this exception as stop flag
     private Exception exception = null;
-
-    // true when there is, at least one route to a server
-    private final BoolWithLockCond readyToActivateRoutes = new BoolWithLockCond(false);
 
     public ControlWorker(String bootstrapIP, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.neighbourTable = neighbourTable;
@@ -87,6 +86,7 @@ public class ControlWorker implements Runnable{
             try { waitsForStartConditionsToBeMet(); }
             catch (InterruptedException ignored) {}
 
+            startRoutingHandler();
             informReadyStateToBootstrap();
 
             System.out.println("************************\nconnected neighbours: " + neighbourTable.getConnectedNeighbours()+"\n**********************");
@@ -107,6 +107,13 @@ public class ControlWorker implements Runnable{
 
         //Closing process
         close();
+    }
+
+    private void startRoutingHandler() {
+        routingHandler = new RoutingHandler(bindAddress, neighbourTable, routingTable, clientTable, logger);
+        Thread t = new Thread(routingHandler);
+        threads.add(t);
+        t.start();
     }
 
     /* ****** Custom socket ****** */
@@ -344,26 +351,18 @@ public class ControlWorker implements Runnable{
     }
 
     private void acceptNewClient(String client, TaggedConnection tc) throws IOException {
-        //Adds client to clients' table
-        this.clientTable.addNewClient(client);
+        activateBestRoute();
 
-
+        if(routingTable == null || routingTable.getActiveRoute() == null){
+            tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
+            return;
+        }
 
         //Sends frame informing the acceptance of the client //TODO - verificar palavra-passe para seguranca
         tc.send(0, Tags.CONNECT_AS_CLIENT_EXCHANGE, new byte[]{});
 
-        try {
-            //Awaits until a valid route is available
-            readyToActivateRoutes.awaitForValue(true);
-        } catch (InterruptedException e) {
-            //If the thread is interrupted, informs the client that it won't be receiving the stream
-            tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
-            clientTable.removeClient(client);
-            return;
-        }
-
-        //Activates the best route available
-        activateBestRoute();
+        //Adds client to clients' table
+        this.clientTable.addNewClient(client);
     }
 
     private void acceptNewServer(String server, TaggedConnection tc){
@@ -432,6 +431,7 @@ public class ControlWorker implements Runnable{
 
     /* ****** Check Necessary Conditions to Start ****** */
 
+    //TODO - Recovery mode -> Tentar adquirir pelo menos uma rota
     //Waits until the necessary conditions are fulfilled
     private void waitsForStartConditionsToBeMet() throws InterruptedException {
         boolean allReady = false;
@@ -474,102 +474,22 @@ public class ControlWorker implements Runnable{
 
     /* ****** Activate best route ****** */
 
+    private void activateBestRoute(){
+        if(routingHandler == null)
+            return;
+
+        Frame frame = new Frame(0, Tags.ACTIVATE_ROUTE, new byte[]{});
+        routingHandler.pushRoutingFrame(null, frame);
+
+        routingHandler.waitForRouteUpdate();
+    }
+
 
     //tentar ativar,
     //  ->se n conseguir, enviar a dizer q n é possivel,
     //  ->se conseguir enviar a dizer q conseguiu
     //preciso desativar rota se for mudada
     /*
-    private void activateBestRouteVOLD(String requester) throws IOException{
-
-
-
-        //Is directly connected to a server
-        if(requester != null && clientTable.getAllServers().size() != 0){
-            ConnectionHandler ch = neighbourTable.getConnectionHandler(requester);
-            TaggedConnection tc = ch.getTaggedConnection();
-            tc.send(0,Tags.RESPONSE_ACTIVATE_ROUTE, Serialize.serializeBoolean(true)); //Confirms the activation of the route
-        }
-        //Is directly connected to a client
-        else //if(clientTable.getAllClients().size() != 0)
-        {
-            Tuple<String, String> prevRoute = routingTable.getActiveRoute();
-            Tuple<String, String> newRoute = routingTable.activateBestRoute();
-
-            //prevroute might be null
-            // newroute activates and returns the best route if it has some
-
-            if (prevRoute == null){
-                //activate new route
-                ConnectionHandler newProvCH = neighbourTable.getConnectionHandler(newRoute.fst);
-                TaggedConnection tg = newProvCH.getTaggedConnection();
-                tg.send(0,Tags.ACTIVATE_ROUTE, new byte[]{});
-            }
-            else{
-                // se forem iguais
-                if(newRoute.fst.equals(prevRoute.fst){
-
-                }
-
-            }
-
-
-            if(oldProvidingIP.equals(newProvidingIP)){
-
-            }
-            else{
-
-            }
-        }
-
-            Situacoes:
-                -> Cliente
-                -> Nodo intermedio
-                -> Server
-
-            - Cliente/Nodo Intermedio:
-                - Tentar mudar
-                    - Ficar igual -> pedir ao proximo nodo
-                    - Muda -> pedir ao novo provider para ativar e desativar rota antiga depois da nova rota estar ativa
-                    - N tem rota disponivel -> n faz nada
-
-
-
-
-
-
-        var oldProvidingIP = routingTable.getActiveRoute().fst;
-        var newProvidingIP = routingTable.getActiveRoute().fst;
-
-        ConnectionHandler newProvCH = neighbourTable.getConnectionHandler(newProvidingIP);
-        TaggedConnection newProvTC = newProvCH == null ? null : newProvCH.getTaggedConnection();
-
-
-        if(oldProvidingIP != null && !Objects.equals(oldProvidingIP, newProvidingIP)){
-            ConnectionHandler oldProvCH = neighbourTable.getConnectionHandler(oldProvidingIP);
-            TaggedConnection oldProvTC = oldProvCH == null ? null : oldProvCH.getTaggedConnection();
-
-            if(newProvTC != null)
-                newProvTC.send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
-
-            if(oldProvTC != null)
-                oldProvTC.send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
-        }
-        else if(newProvTC != null)
-            newProvTC.send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
-
-        //Se a rota mudou
-        //  -> Contactar novo vizinho e cancelar rota antiga (se existir)
-        //Else
-        //  -> nao fazer nada
-    }
-
-    */
-
-    //tentar ativar,
-    //  ->se n conseguir, enviar a dizer q n é possivel,
-    //  ->se conseguir enviar a dizer q conseguiu
-    //preciso desativar rota se for mudada
     private void activateBestRoute() throws IOException {
 
         //Is directly not connected to a server
@@ -600,7 +520,7 @@ public class ControlWorker implements Runnable{
         }
 
         this.routingTable.printTables();
-    }
+    }*/
 
     /* ****** Flood ****** */
 
@@ -650,8 +570,6 @@ public class ControlWorker implements Runnable{
 
             //inserting a server path to Routing Table
             routingTable.addServerPath(serverIp, ip, jumps, (float) time / 1000f, false);
-            //signals all threads waiting to activate a route
-            readyToActivateRoutes.setAndSignalAll(true);
 
             routingTable.printTables(); //TODO - remover aqui
         }

@@ -2,6 +2,9 @@ package speedNode.Nodes.OverlayNode.Tables;
 
 import speedNode.Utilities.Tuple;
 
+import java.util.List;
+import java.util.Set;
+
 public interface IRoutingTable {
 
     /**
@@ -55,7 +58,9 @@ public interface IRoutingTable {
 
     void printTables();
 
-    //void verifyDelay(String serverIP, String ip, long l);
+    boolean verifyDelay(String serverIP, String ip, long l);
 
-    //void checkDelay();
+    void checkDelay();
+
+    Tuple<String, String> activateBestRoute(Set<String> excluded);
 }

@@ -150,7 +150,7 @@ public class RoutingTable implements IRoutingTable{
             float minScore = Float.MAX_VALUE;
             Tuple<String,String> bestRoute =null;
 
-            //TODO: Deveria escolher a rota atual preferencialmente
+
 
             for (Map.Entry<Tuple<String,String>,Tuple<Integer,Float>> entry : this.metricsTable.entrySet()){
                 score = entry.getValue().snd + (entry.getValue().fst * wiggleRoom);
@@ -160,7 +160,37 @@ public class RoutingTable implements IRoutingTable{
                 }
             }
 
-            if(activateRoute(bestRoute.fst,bestRoute.snd))
+            if(bestRoute != null && activateRoute(bestRoute.fst,bestRoute.snd))
+                return bestRoute;
+            else
+                return null;
+        }finally {
+            this.readWriteLockMetrics.readLock().unlock();
+        }
+    }
+
+
+
+    public Tuple<String, String> activateBestRoute(Set<String> excluded) {
+        try{
+            this.readWriteLockMetrics.readLock().lock();
+            float wiggleRoom = 0.05f;
+            float score;
+            float minScore = Float.MAX_VALUE;
+            Tuple<String,String> bestRoute =null;
+
+
+            for (Map.Entry<Tuple<String,String>,Tuple<Integer,Float>> entry : this.metricsTable.entrySet()){
+                if (!excluded.contains(entry.getKey().snd) ) { // if neighbour isn't excluded from being the best route
+                    score = entry.getValue().snd + (entry.getValue().fst * wiggleRoom);
+                    if (score < minScore) {
+                        minScore = score;
+                        bestRoute = entry.getKey();
+                    }
+                }
+            }
+
+            if(bestRoute != null && activateRoute(bestRoute.fst,bestRoute.snd))
                 return bestRoute;
             else
                 return null;
@@ -212,28 +242,30 @@ public class RoutingTable implements IRoutingTable{
             this.readWriteLockActive.writeLock().unlock();
         }
     }
-/*
+
     @Override
-    public void verifyDelay(String serverIP, String Provider, long newTime) {
+    public boolean verifyDelay(String serverIP, String Provider, long newTime) {
         // Fazer conta para detetar delay
         // se foi detetado signalAll
         try{
             this.readWriteLockMetrics.readLock().lock();
+            reentrantLock.lock();
 
             var metrics = this.metricsTable.get(new Tuple<>(serverIP,Provider));
-            if (metrics.snd - newTime > 0.05 * metrics.snd){
+            if (newTime - metrics.snd > 0.05 * metrics.snd){
+                System.out.println("ROUTING TABLE: DELAY DETETADO");
+                this.delay = true;
                 this.cond.signalAll();
+                return true;
             }
-
-
-
+            return false;
 
         }finally {
+            reentrantLock.unlock();
             this.readWriteLockMetrics.readLock().unlock();
         }
-
-
     }
+
 
     public void checkDelay(){
         try{
@@ -247,6 +279,6 @@ public class RoutingTable implements IRoutingTable{
             reentrantLock.unlock();
         }
     }
-    */
+
 
 }
