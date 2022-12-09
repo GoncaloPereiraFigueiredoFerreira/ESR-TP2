@@ -2,10 +2,7 @@ package speedNode.Utilities;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.logging.FileHandler;
-import java.util.logging.Handler;
-import java.util.logging.Logger;
-import java.util.logging.SimpleFormatter;
+import java.util.logging.*;
 
 public class LoggingToFile {
     /**
@@ -17,15 +14,21 @@ public class LoggingToFile {
     public static Logger createLogger (String logName, String pathToDirectory, boolean logToStdOut){
         pathToDirectory = pathToDirectory == null ? "" : pathToDirectory;
         Logger logger = Logger.getLogger(logName);
-        logger.setUseParentHandlers(logToStdOut);
+        logger.setUseParentHandlers(false);
         FileHandler fh;
 
         try {
             // This block configures the logger with handler and formatter
             fh = new FileHandler(pathToDirectory + logName);
             logger.addHandler(fh);
-            SimpleFormatter formatter = new SimpleFormatter();
+
+            ConsoleHandler consoleHandler = new ConsoleHandler();
+            logger.addHandler(consoleHandler);
+
+            //SimpleFormatter formatter = new SimpleFormatter();
+            MyFormatter formatter = new MyFormatter("---");
             fh.setFormatter(formatter);
+            consoleHandler.setFormatter(formatter);
         } catch (SecurityException e) {
             System.out.println("No permission to perform logging.");
         } catch (IOException ioe) {
@@ -53,16 +56,24 @@ public class LoggingToFile {
 
         FileHandler fh;
         try {
-            //Removes previous file handler
-            Handler handlerToRemove = logger.getHandlers()[0];
-            logger.removeHandler(handlerToRemove);
-            handlerToRemove.close();
+            //Removes previous handlers
+            for (Handler h : logger.getHandlers()){
+                h.close();
+                logger.removeHandler(h);
+            }
 
             // This block configures the logger with the new handler and formatter
             fh = new FileHandler(newLogName + newPathToDir);
             logger.addHandler(fh);
-            SimpleFormatter formatter = new SimpleFormatter();
+
+            ConsoleHandler consoleHandler = new ConsoleHandler();
+            logger.addHandler(consoleHandler);
+
+            //SimpleFormatter formatter = new SimpleFormatter();
+            MyFormatter formatter = new MyFormatter(newLogName);
             fh.setFormatter(formatter);
+            consoleHandler.setFormatter(formatter);
+
         } catch (SecurityException e) {
             System.out.println("No permission to perform logging.");
         } catch (IOException ioe) {

@@ -46,14 +46,19 @@ public class StreamClient {
     Timer cTimer; //timer used to receive data from the UDP socket
     byte[] cBuf; //buffer used to store data received from the server
 
+    static String SpeedNodeIP;
+    static int TCPPort;
+
+
     //--------------------------
     //Constructor
     //--------------------------
     public StreamClient(String speedNodeIP, int tcpPort) {
 
-
+        SpeedNodeIP = speedNodeIP;
+        TCPPort = tcpPort;
         //Contactar o servidor primeiro antes da GUI aparecer
-        contactSpeedNode(speedNodeIP,tcpPort);
+        connectToOverlay();
 
         //build GUI
         //--------------------------
@@ -116,7 +121,7 @@ public class StreamClient {
     public static void main(String argv[]) throws Exception
     {
         int tcpPort = 54321;
-        String ip ="";
+        String ip = "";
         if (argv.length >= 1) {
             ip = argv[0];
             try {
@@ -135,9 +140,9 @@ public class StreamClient {
 
 
 
-    private int contactSpeedNode(String ipNode, int tcpPort){
+    private int connectToOverlay(){
         try{
-            Socket s = new Socket(ipNode, tcpPort);
+            Socket s = new Socket(SpeedNodeIP, TCPPort);
             TaggedConnection tc = new TaggedConnection(s);
             s.setSoTimeout(10000);
 
@@ -161,6 +166,22 @@ public class StreamClient {
         }
     }
 
+
+    private int disconnectfromOverlay(){
+        try{
+            Socket s = new Socket(SpeedNodeIP, TCPPort);
+            TaggedConnection tc = new TaggedConnection(s);
+            s.setSoTimeout(10000);
+
+            tc.send(0, Tags.CLIENT_CLOSE_CONNECTION,new byte[]{});
+
+            return 1;
+
+        }catch (IOException ioe){
+            ioe.printStackTrace();
+            return -1;
+        }
+    }
 
 
 
@@ -187,6 +208,7 @@ public class StreamClient {
             System.out.println("Teardown Button pressed !");
             //stop the timer
             cTimer.stop();
+            disconnectfromOverlay();
             //exit
             System.exit(0);
         }

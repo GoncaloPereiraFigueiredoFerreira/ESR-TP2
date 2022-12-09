@@ -107,7 +107,7 @@ public class FTRapidV2 {
     }
 
     public String getServerIP(){
-        return this.ServerIp.toString().replace("/","");
+        return this.ServerIp.getHostAddress();
     }
 
 

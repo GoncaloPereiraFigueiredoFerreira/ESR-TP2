@@ -2,6 +2,7 @@ package speedNode.Utilities;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -32,6 +33,20 @@ public class ProtectedQueue<X> {
             while (await && this.length() == 0) {
                 // Fica bloqueado a espera de pacotes na queue
                 try { cond.await();}
+                catch (InterruptedException ignored) {}
+            }
+            return queue.pop();
+        }finally {
+            rwLock.writeLock().unlock();
+        }
+    }
+
+    public X popElem(long time, TimeUnit timeUnit){
+        try{
+            rwLock.writeLock().lock();
+            while (this.length() == 0) {
+                // Fica bloqueado a espera de pacotes na queue
+                try { cond.await(time, timeUnit);}
                 catch (InterruptedException ignored) {}
             }
             return queue.pop();

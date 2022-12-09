@@ -353,6 +353,13 @@ public class ControlWorker implements Runnable{
     private void acceptNewClient(String client, TaggedConnection tc) throws IOException {
         activateBestRoute();
 
+        System.out.println("Melhor rota ativa!!");
+        Tuple<String, String> route = routingTable.getActiveRoute();
+        if(route != null)
+            System.out.println("Melhor rota: " +  route.fst +  "  " + route.snd);
+        else
+            System.out.println("Rota é nula!");
+
         if(routingTable == null || routingTable.getActiveRoute() == null){
             tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
             return;
@@ -569,7 +576,7 @@ public class ControlWorker implements Runnable{
                            previous_msg.get(2)); //timestamp
 
             //inserting a server path to Routing Table
-            routingTable.addServerPath(serverIp, ip, jumps, (float) time / 1000f, false);
+            routingTable.addServerPath(serverIp, ip, jumps, (float) time, false);
 
             routingTable.printTables(); //TODO - remover aqui
         }
@@ -624,9 +631,9 @@ public class ControlWorker implements Runnable{
         try {
             switch (frame.getTag()){
                 case Tags.FLOOD -> handleFloodFrame(ip,frame);
-                case Tags.ACTIVATE_ROUTE -> handleActivateRoute(ip);
-                case Tags.DEACTIVATE_ROUTE -> handleDeactivateRoute(ip);
+                default -> routingHandler.pushRoutingFrame(ip,frame);
             }
+
         }catch (Exception e){
             e.printStackTrace();
         }

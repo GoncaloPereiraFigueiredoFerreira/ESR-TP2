@@ -3,7 +3,9 @@ package speedNode.Nodes.OverlayNode.Tables;
 import speedNode.Utilities.BoolWithLockCond;
 import speedNode.Utilities.Tuple;
 
+import java.sql.Time;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -30,7 +32,6 @@ public class RoutingTable implements IRoutingTable{
 
     private boolean delay = false;
     private final ReentrantLock reentrantLock = new ReentrantLock();
-    private final Condition cond = reentrantLock.newCondition();
 
     public RoutingTable(){
 
@@ -99,6 +100,32 @@ public class RoutingTable implements IRoutingTable{
             readWriteLockActive.writeLock().unlock();
         }
     }
+
+
+    public void deactivateRoute(){
+        try{
+            readWriteLockActive.writeLock().lock();
+            Tuple<String,String> activeRoute= this.getActiveRoute();
+            this.activeRoute.replace(activeRoute,false);
+        }finally {
+            readWriteLockActive.writeLock().unlock();
+        }
+    }
+
+
+    public void deactivateRoute(String provider){
+        try{
+            readWriteLockActive.writeLock().lock();
+            Tuple<String,String> activeRoute;
+            for (var route :this.activeRoute.keySet()){
+                if (route.snd.equals(provider))
+                    this.activeRoute.replace(route,false);
+            }
+        }finally {
+            readWriteLockActive.writeLock().unlock();
+        }
+    }
+
 
     @Override
     public boolean isRouteActive(String ServerIp, String Provider) {
@@ -244,41 +271,42 @@ public class RoutingTable implements IRoutingTable{
     }
 
     @Override
-    public boolean verifyDelay(String serverIP, String Provider, long newTime) {
+    public boolean verifyDelay(String serverIP, String Provider,int jumps ,long newTime) {
         // Fazer conta para detetar delay
         // se foi detetado signalAll
         try{
-            this.readWriteLockMetrics.readLock().lock();
+            this.readWriteLockMetrics.writeLock().lock();
             reentrantLock.lock();
 
             var metrics = this.metricsTable.get(new Tuple<>(serverIP,Provider));
             if (newTime - metrics.snd > 0.05 * metrics.snd){
                 System.out.println("ROUTING TABLE: DELAY DETETADO");
+                System.out.println("DELAYED TIME: "+ newTime);
+                System.out.println("RECORDED TIME: "+ metrics.snd);
                 this.delay = true;
-                this.cond.signalAll();
+                this.updateMetrics(serverIP,Provider,jumps,newTime);
                 return true;
             }
             return false;
 
         }finally {
             reentrantLock.unlock();
-            this.readWriteLockMetrics.readLock().unlock();
+            this.readWriteLockMetrics.writeLock().unlock();
         }
     }
 
 
-    public void checkDelay(){
+    public boolean checkDelay(){
         try{
             reentrantLock.lock();
-            while(!delay) {
-                try {cond.await();} catch (InterruptedException ignored) {}
-            }
-
+            return delay;
         } finally {
             delay=false; // quando a thread sair o delay "fica resolvido"
             reentrantLock.unlock();
         }
     }
+
+
 
 
 }

@@ -45,6 +45,11 @@ public interface IRoutingTable {
     boolean activateRoute(String ServerIp, String Provider);
 
 
+    void deactivateRoute();
+
+    void deactivateRoute(String Provider);
+
+
     boolean isRouteActive(String ServerIp, String Provider);
 
 
@@ -58,9 +63,9 @@ public interface IRoutingTable {
 
     void printTables();
 
-    boolean verifyDelay(String serverIP, String ip, long l);
+    boolean verifyDelay(String serverIP, String Provider,int jumps ,long newTime);
 
-    void checkDelay();
+    boolean checkDelay();
 
     Tuple<String, String> activateBestRoute(Set<String> excluded);
 }

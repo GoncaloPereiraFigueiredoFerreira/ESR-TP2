@@ -65,7 +65,7 @@ public class TransmitionWorker implements Runnable{
             /////// Start processing
 
             // Origin IP of the packet// Had to remove the first character
-            String ip = input.getAddress().toString().replace("/","");
+            String ip = input.getAddress().getHostAddress();
 
 
             // Package that will be sent
@@ -89,10 +89,7 @@ public class TransmitionWorker implements Runnable{
 
                 if (this.clientTable.getAllClients().size() >0){
                     //verificar se existe delay, e alertar na routing table se sim
-                    boolean flag= this.routingTable.verifyDelay(serverIP,ip,currTime-initTimeSt);
-
-                    // Updates the routing table with the time it took the packet to reach the current node
-                    if (flag) this.routingTable.updateMetrics(serverIP,ip,jumps,currTime-initTimeSt);
+                    this.routingTable.verifyDelay(serverIP,ip,jumps,currTime-initTimeSt);
                 }
 
 

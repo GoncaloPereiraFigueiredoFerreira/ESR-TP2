@@ -1,6 +1,8 @@
 package speedNode.Utilities;
 
 import java.io.*;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -111,4 +113,35 @@ public class Serialize {
         bais.close();
         return ips;
     }
+
+    public static byte[] serializeListOfIPs (List<String> ips) throws IOException{
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ips.forEach(x -> {
+            try {
+                baos.writeBytes(InetAddress.getByName(x).getAddress());
+            } catch (UnknownHostException e) {
+                System.out.println("IP não reconhecido !! " + x);
+            }
+        });
+        byte[] byteArray= baos.toByteArray();
+        baos.close();
+        return byteArray;
+
+    }
+
+
+    public static List<String> deserializeListOfIPs(byte[] bytes) throws IOException{
+        ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
+        List<String> list = new ArrayList<>();
+        int i =0;
+        while (i < bytes.length){
+            list.add(InetAddress.getByAddress(bais.readNBytes(4)).getHostAddress());
+            i+=4;
+        }
+        return list;
+    }
+
+
+
+
 }
