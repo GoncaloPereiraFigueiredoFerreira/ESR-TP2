@@ -281,6 +281,7 @@ public class RoutingTable implements IRoutingTable{
             reentrantLock.lock();
 
             var metrics = this.metricsTable.get(new Tuple<>(serverIP,Provider));
+            System.out.println("New time: " + newTime + " | Oldtime: "  + metrics.snd );
             if (newTime - metrics.snd > 0.05 * metrics.snd){
                 System.out.println("ROUTING TABLE: DELAY DETETADO");
                 System.out.println("DELAYED TIME: "+ newTime);

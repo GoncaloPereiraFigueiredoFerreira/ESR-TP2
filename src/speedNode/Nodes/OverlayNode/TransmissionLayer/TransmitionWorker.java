@@ -68,8 +68,7 @@ public class TransmitionWorker implements Runnable{
             // Origin IP of the packet// Had to remove the first character
             String ip = input.getAddress().getHostAddress();
 
-            if (i%100==0) System.out.println("TRANSMISSION: Recebi umm pacote de " + ip);
-            i++;
+
 
             // Package that will be sent
             FTRapidV2 newPackage = null;
@@ -95,13 +94,14 @@ public class TransmitionWorker implements Runnable{
                     this.routingTable.verifyDelay(serverIP,ip,jumps+1,currTime-initTimeSt);
                 }
 
-
-
-
+                else { this.routingTable.updateMetrics(serverIP,ip,jumps+1,currTime-initTimeSt);}
                 // Update neighbour jump // Here we could detect a delay in the jump
                 this.neighbourTable.updateLastJumpTime(ip,currTime - oldPacket.getLastJumpTimeSt());
 
                 newPackage = new FTRapidV2(initTimeSt,currTime,jumps+1, oldPacket.getPayload(), oldPacket.getPayloadLength(),serverIP );
+
+                if (i%100==0) System.out.println("TRANSMISSION: Recebi umm pacote de " + ip + "com delay de " + (currTime-initTimeSt));
+                i++;
             }
 
 
