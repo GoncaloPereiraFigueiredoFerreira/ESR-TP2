@@ -10,7 +10,7 @@ import java.util.Arrays;
 import java.util.Base64;
 
 
-public class FTRapidV2 {
+public class RapidFTProtocol {
     static int HEADER_SIZE = 56;
 
     static int PackType = 420;
@@ -19,19 +19,26 @@ public class FTRapidV2 {
     public long InitialTimeSt =0;
     public long LastJumpTimeSt =0;
     public int Jumps=0;
-    // public int EncryptionKey;
 
     public byte[] header;
     public int payload_size;
     public byte[] payload;
 
-
-    public FTRapidV2(long initialTimeStamp,long lastJumpTimeSt, int jumps, byte[] rtppacket, int rtpLen,String ServerIp,String NeighbourIP) {
+    /**
+     * Constructor for packages sent from a content provider
+     * @param initialTimeStamp Recorded timestamp of arrival
+     * @param lastJumpTimeSt Latest jump timestamp
+     * @param jumps Number of jumps taken by the packet
+     * @param rtpPacket RTP packet contained in the payload
+     * @param ServerIp IP of the content provider server
+     * @param NeighbourIP IP of the last speed node passed
+     */
+    public RapidFTProtocol(long initialTimeStamp, long lastJumpTimeSt, int jumps, byte[] rtpPacket, String ServerIp, String NeighbourIP) {
         header = new byte[HEADER_SIZE];
         this.Jumps= jumps;
         this.LastJumpTimeSt = lastJumpTimeSt;
         this.InitialTimeSt = initialTimeStamp;
-        this.payload = this.encryptMessage(rtppacket);
+        this.payload = this.encryptMessage(rtpPacket);
         this.payload_size = this.payload.length;
 
         try{
@@ -59,13 +66,18 @@ public class FTRapidV2 {
         }
     }
 
-    public FTRapidV2(byte[] ftrapidV2, int ftrapid_length) {
+    /**
+     * Constructor to reconstruct a rapidftp
+     * @param rapidFTP Rapid ftp package
+     * @param rapidoFTP_length Byte length of package
+     */
+    public RapidFTProtocol(byte[] rapidFTP, int rapidoFTP_length) {
         try {
-            this.InitialTimeSt = Serialize.deserializeLong(Arrays.copyOfRange(ftrapidV2,10,24));
-            this.LastJumpTimeSt = Serialize.deserializeLong(Arrays.copyOfRange(ftrapidV2,24,38));
-            this.Jumps = Serialize.deserializeInteger(Arrays.copyOfRange(ftrapidV2,38,48));
-            this.ServerIp = InetAddress.getByAddress(Arrays.copyOfRange(ftrapidV2,48,52));
-            this.NeighbourIp =InetAddress.getByAddress(Arrays.copyOfRange(ftrapidV2,52,56));
+            this.InitialTimeSt = Serialize.deserializeLong(Arrays.copyOfRange(rapidFTP,10,24));
+            this.LastJumpTimeSt = Serialize.deserializeLong(Arrays.copyOfRange(rapidFTP,24,38));
+            this.Jumps = Serialize.deserializeInteger(Arrays.copyOfRange(rapidFTP,38,48));
+            this.ServerIp = InetAddress.getByAddress(Arrays.copyOfRange(rapidFTP,48,52));
+            this.NeighbourIp =InetAddress.getByAddress(Arrays.copyOfRange(rapidFTP,52,56));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -73,11 +85,10 @@ public class FTRapidV2 {
         assert this.LastJumpTimeSt !=0;
         assert this.Jumps !=0;
 
-        this.header = Arrays.copyOfRange(ftrapidV2,0,HEADER_SIZE);
-        this.payload = Arrays.copyOfRange(ftrapidV2,HEADER_SIZE,ftrapid_length);
+        this.header = Arrays.copyOfRange(rapidFTP,0,HEADER_SIZE);
+        this.payload = Arrays.copyOfRange(rapidFTP,HEADER_SIZE,rapidoFTP_length);
         this.payload_size = this.payload.length;
     }
-
 
 
     public long getLastJumpTimeSt(){

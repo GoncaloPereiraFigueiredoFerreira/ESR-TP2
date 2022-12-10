@@ -1,6 +1,6 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
-import speedNode.Nodes.OverlayNode.TransmissionLayer.TransmitionWorker;
+import speedNode.Nodes.OverlayNode.TransmissionLayer.TransmissionWorker;
 import speedNode.Utilities.LoggingToFile;
 import speedNode.Utilities.*;
 import speedNode.Nodes.OverlayNode.Tables.*;
@@ -78,8 +78,8 @@ public class ControlWorker implements Runnable{
             logger.info("Server Socket created.");
 
             //Starts transmission thread
-            TransmitionWorker transmitionWorker = new TransmitionWorker(bindAddress,neighbourTable,routingTable,clientTable);
-            Thread transWorker = new Thread(transmitionWorker);
+            TransmissionWorker transmissionWorker = new TransmissionWorker(bindAddress,neighbourTable,routingTable,clientTable);
+            Thread transWorker = new Thread(transmissionWorker);
             transWorker.start();
             threads.add(transWorker);
 
@@ -263,7 +263,7 @@ public class ControlWorker implements Runnable{
                     e.printStackTrace();
                 }
             }
-            if (interfaceIP != "") break;
+            if (!Objects.equals(interfaceIP, "")) break;
         }
         return interfaceIP;
     }

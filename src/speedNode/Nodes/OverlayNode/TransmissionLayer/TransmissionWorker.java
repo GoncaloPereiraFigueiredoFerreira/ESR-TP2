@@ -8,7 +8,7 @@ import speedNode.Nodes.OverlayNode.Tables.IRoutingTable;
 import java.net.*;
 import java.util.List;
 
-public class TransmitionWorker implements Runnable{
+public class TransmissionWorker implements Runnable{
     private final INeighbourTable neighbourTable;
     private final IRoutingTable routingTable;
     private final IClientTable clientTable;
@@ -17,10 +17,10 @@ public class TransmitionWorker implements Runnable{
     private DatagramSocket ds;
     private static final int PORT=50000;
     private static final int CLPORT = 25000;
-    public static final int MAX_UDP_P_SIZE = 30000; // To be defined
+    public static final int MAX_UDP_P_SIZE = 60000;
     private final String bindAddr ;
 
-    public TransmitionWorker(String bindAddr,INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
+    public TransmissionWorker(String bindAddr, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.clientTable = clientTable;
         this.routingTable = routingTable;
         this.neighbourTable = neighbourTable;
@@ -29,7 +29,7 @@ public class TransmitionWorker implements Runnable{
     }
 
     //TODO: Store all threads in a set, in order to shutdown gracefully
-
+    //TODO: Add logger
     @Override
     public void run() {
 
@@ -42,7 +42,7 @@ public class TransmitionWorker implements Runnable{
             e.printStackTrace();
             System.exit(-1);
         }
-        
+
         // Initialize the two slaves
         ReceiverSlave rs = new ReceiverSlave(ds,inputQueue);
         Thread receiver = new Thread(rs);
@@ -57,6 +57,7 @@ public class TransmitionWorker implements Runnable{
         // Change this to properly close down worker
         boolean working = true;
         int i=0;
+        //TODO: Make this end gracefully
         while (working) {
 
 
@@ -65,25 +66,23 @@ public class TransmitionWorker implements Runnable{
 
             /////// Start processing
 
-            // Origin IP of the packet// Had to remove the first character
-
-
+            // Origin IP of the packet
             String ip = input.getAddress().getHostAddress();
 
             // Package that will be sent
-            FTRapidV2 newPackage = null;
+            RapidFTProtocol newPackage = null;
 
             // If the package comes from a server
             if (this.clientTable.getAllServers().contains(ip)) {
                 // Wraps the RTP package in a FTRapid one
                 long timestamp = System.nanoTime();
-                newPackage = new FTRapidV2(timestamp,timestamp, 0, input.getData(), input.getLength(),ip,bindAddr);
+                newPackage = new RapidFTProtocol(timestamp,timestamp, 0, input.getData(),ip,bindAddr);
 
             }
             // Else if it comes from a neighbour
             else if (this.neighbourTable.getAllNeighbourInterfaces().contains(ip)) {
 
-                FTRapidV2 oldPacket = new FTRapidV2(input.getData(), input.getLength());
+                RapidFTProtocol oldPacket = new RapidFTProtocol(input.getData(), input.getLength());
                 long initTimeSt = oldPacket.getInitialTimeSt();
                 int jumps = oldPacket.getJumps();
                 String serverIP = oldPacket.getServerIP();
@@ -95,14 +94,14 @@ public class TransmitionWorker implements Runnable{
                     this.routingTable.verifyDelay(serverIP,neighbourIP,jumps+1,currTime-initTimeSt);
                 }
 
-               this.routingTable.updateMetrics(serverIP,neighbourIP,jumps+1,currTime-initTimeSt);
+                this.routingTable.updateMetrics(serverIP,neighbourIP,jumps+1,currTime-initTimeSt);
                 // Update neighbour jump // Here we could detect a delay in the jump
                 this.neighbourTable.updateLastJumpTime(neighbourIP,currTime - oldPacket.getLastJumpTimeSt());
 
-                newPackage = new FTRapidV2(initTimeSt,currTime,jumps+1, oldPacket.getPayload(), oldPacket.getPayloadLength(),serverIP,bindAddr );
+                newPackage = new RapidFTProtocol(initTimeSt,currTime,jumps+1, oldPacket.getPayload(),serverIP,bindAddr );
 
-                if (i%100==0) System.out.println("TRANSMISSION: Recebi um pacote de " + ip + " com delay de " + (currTime-initTimeSt)/1000);
-                i++;
+                //if (i%100==0) System.out.println("TRANSMISSION: Recebi um pacote de " + ip + " com delay de " + (currTime-initTimeSt)/1000);
+                //i++;
             }
 
 
@@ -132,11 +131,6 @@ public class TransmitionWorker implements Runnable{
                 }
             }
         }
-    }
-
-    public boolean detectDelay(String origin,float delayPercent, long timestamp){
-        long supposedTime = this.neighbourTable.getLastJumpTime(origin);
-        return supposedTime * (1+delayPercent) < timestamp || supposedTime * delayPercent > timestamp;
     }
 
 

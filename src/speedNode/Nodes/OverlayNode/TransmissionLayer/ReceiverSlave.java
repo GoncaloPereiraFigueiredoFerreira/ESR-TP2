@@ -20,7 +20,7 @@ public class ReceiverSlave implements Runnable{
     @Override
     public void run() {
 
-        DatagramPacket dp = new DatagramPacket(new byte[TransmitionWorker.MAX_UDP_P_SIZE],TransmitionWorker.MAX_UDP_P_SIZE);
+        DatagramPacket dp = new DatagramPacket(new byte[TransmissionWorker.MAX_UDP_P_SIZE], TransmissionWorker.MAX_UDP_P_SIZE);
         try {
             while(true) {
                 ds.receive(dp);

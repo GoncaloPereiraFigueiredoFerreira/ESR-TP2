@@ -1,7 +1,6 @@
 package speedNode.Nodes.OverlayNode;
 
 import speedNode.Nodes.OverlayNode.ControlLayer.ControlWorker;
-import speedNode.Nodes.OverlayNode.TransmissionLayer.TransmitionWorker;
 import speedNode.Nodes.OverlayNode.Tables.*;
 
 import java.util.List;
