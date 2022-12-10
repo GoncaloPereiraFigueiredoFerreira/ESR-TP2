@@ -50,6 +50,9 @@ public class ControlWorker implements Runnable{
     //Child threads will use this exception as stop flag
     private Exception exception = null;
 
+    //List of my own Interfaces
+    private List<String> ipv4Interfaces;
+
     public ControlWorker(String bootstrapIP, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.neighbourTable = neighbourTable;
         this.routingTable = routingTable;
@@ -146,8 +149,8 @@ public class ControlWorker implements Runnable{
 
         //Get neighbours from bootstrap
         logger.info("Requesting neighbours from bootstrap.");
-        List<String> ipv4s = new ArrayList<>(getNetworkInterfacesIPv4s());
-        bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(ipv4s));
+        this.ipv4Interfaces = new ArrayList<>(getNetworkInterfacesIPv4s());
+        bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(ipv4Interfaces));
 
         logger.info("Waiting for bootstrap response...");
         Frame neighboursFrame = bootstrapConnection.receive();
@@ -194,7 +197,8 @@ public class ControlWorker implements Runnable{
 
             //Requesting neighbour to establish connection
             logger.info("Requesting neighbour " + neighbour + " to establish connection.");
-            tc.send(0, Tags.REQUEST_NEIGHBOUR_CONNECTION, new byte[]{}); //Send connection request
+            logger.info("Sending the interfaces ---------------> " + this.ipv4Interfaces);
+            tc.send(0, Tags.REQUEST_NEIGHBOUR_CONNECTION, Serialize.serializeListOfStrings(this.ipv4Interfaces)); //Send connection request //TODO: Adicionar a lista dos ips
             Frame frame = tc.receive(); //Waits for answer
             logger.info("Received answer from neighbour " + neighbour);
 
@@ -204,14 +208,18 @@ public class ControlWorker implements Runnable{
                 s.close();
                 return;
             }
-
+            List<String> interfaceIpsNeigh;
             //Boolean == True -> Neighbour added the connection to his map
             //Otherwise -> Neighbour did not add connection to his map
-            if(Serialize.deserializeBoolean(frame.getData())){
+            if((interfaceIpsNeigh = Serialize.deserializeListOfStrings(frame.getData())).size()>0){
                 logger.info("Neighbour " + neighbour + " accepted connection.");
 
                 try{
                     neighbourTable.writeLock();
+
+                    String interfaceIP = chooseInterface(interfaceIpsNeigh);
+                    logger.info("\n\n ----->INTERFACE "+ interfaceIP +" DE CONTACTO COM: " + neighbour +"\n\n\n" );
+                    neighbourTable.setInterfaceIp(neighbour,interfaceIP);
 
                     //Only adds the connection if there isn't already a connection
                     //Or, in case there is one active, if the neighbours IP is lexically superior
@@ -237,6 +245,30 @@ public class ControlWorker implements Runnable{
             if(s != null && !s.isClosed()) s.close();
         }
     }
+
+
+
+    private String chooseInterface(List<String> neighbourInterfaces){
+        String interfaceIP = "";
+        for (String neighbourIP :neighbourInterfaces){
+            for (String localIP : this.ipv4Interfaces){
+                try {
+                    byte[] tempNIP = Arrays.copyOfRange( InetAddress.getByName(neighbourIP).getAddress(),0,3);
+                    byte[] tempLIP = Arrays.copyOfRange( InetAddress.getByName(localIP).getAddress(),0,3);
+                    if (Arrays.equals(tempNIP,tempLIP)) {
+                        interfaceIP = neighbourIP;
+                        break;
+                    }
+                } catch (UnknownHostException e) {
+                    e.printStackTrace();
+                }
+            }
+            if (interfaceIP != "") break;
+        }
+        return interfaceIP;
+    }
+
+
 
     /**
      * Returns collection of ipv4 addresses associated with the devices interfaces. Loopback excluded.
@@ -293,7 +325,7 @@ public class ControlWorker implements Runnable{
                         logger.info("Received frame from " + contact + " with tag " + frame.getTag());
 
                         switch (frame.getTag()) {
-                            case Tags.REQUEST_NEIGHBOUR_CONNECTION -> acceptNeighbourConnection(contact, tc);
+                            case Tags.REQUEST_NEIGHBOUR_CONNECTION -> acceptNeighbourConnection(contact, tc,frame);
                             case Tags.CONNECT_AS_CLIENT_EXCHANGE -> acceptNewClient(contact, tc);
                             case Tags.CONNECT_AS_SERVER_EXCHANGE -> acceptNewServer(contact, tc);
                         }
@@ -320,9 +352,15 @@ public class ControlWorker implements Runnable{
         logger.info("Connection attendant closed.");
     }
 
-    private void acceptNeighbourConnection(String neighbour, TaggedConnection tc) throws IOException{
+    private void acceptNeighbourConnection(String neighbour, TaggedConnection tc,Frame frame) throws IOException{
         try {
             neighbourTable.writeLock();
+
+            List<String> ipv4InterfacesNeighbour = Serialize.deserializeListOfStrings(frame.getData());
+            String interfaceIP = chooseInterface(ipv4InterfacesNeighbour);
+
+            logger.info("\n\n ----->INTERFACE "+ interfaceIP +" DE CONTACTO COM: " + neighbour +"\n\n\n" );
+            neighbourTable.setInterfaceIp(neighbour,interfaceIP);
 
             //if a connection is already active, an answer is sent rejecting the new connection and
             // claiming the existence of a connection with the neighbour
@@ -330,7 +368,7 @@ public class ControlWorker implements Runnable{
                 logger.info("Rejecting " + neighbour + "'s connection... Another connection is already active!");
 
                 //Sends response rejecting the new connection
-                var b = Serialize.serializeBoolean(false);
+                var b = Serialize.serializeListOfStrings(new ArrayList<>());
                 tc.send(0,Tags.RESPONSE_NEIGHBOUR_CONNECTION,b);
 
                 //Closes socket
@@ -341,7 +379,7 @@ public class ControlWorker implements Runnable{
                 logger.info("Accepting " + neighbour + "'s connection...");
 
                 //Sends response accepting the new connection
-                var b = Serialize.serializeBoolean(true);
+                var b = Serialize.serializeListOfStrings(this.ipv4Interfaces);
                 tc.send(0,Tags.RESPONSE_NEIGHBOUR_CONNECTION,b);
 
                 initiateNeighbourConnectionReceiver(neighbour, tc);

@@ -11,10 +11,11 @@ import java.util.Base64;
 
 
 public class FTRapidV2 {
-    static int HEADER_SIZE = 52;
+    static int HEADER_SIZE = 56;
 
     static int PackType = 420;
     public InetAddress ServerIp;
+    public InetAddress NeighbourIp;
     public long InitialTimeSt =0;
     public long LastJumpTimeSt =0;
     public int Jumps=0;
@@ -25,7 +26,7 @@ public class FTRapidV2 {
     public byte[] payload;
 
 
-    public FTRapidV2(long initialTimeStamp,long lastJumpTimeSt, int jumps, byte[] rtppacket, int rtpLen,String ServerIp) {
+    public FTRapidV2(long initialTimeStamp,long lastJumpTimeSt, int jumps, byte[] rtppacket, int rtpLen,String ServerIp,String NeighbourIP) {
         header = new byte[HEADER_SIZE];
         this.Jumps= jumps;
         this.LastJumpTimeSt = lastJumpTimeSt;
@@ -35,6 +36,7 @@ public class FTRapidV2 {
 
         try{
             this.ServerIp = InetAddress.getByName(ServerIp);
+            this.NeighbourIp = InetAddress.getByName(NeighbourIP);
         }catch (UnknownHostException ignored){} // Nunca vai dar este erro
 
         try {
@@ -43,12 +45,14 @@ public class FTRapidV2 {
             byte[] timeStJump = Serialize.serializeLong(this.LastJumpTimeSt);
             byte[] jumpB = Serialize.serializeInteger(this.Jumps);
             byte[] ip = this.ServerIp.getAddress();
+            byte[] neighIP = this.NeighbourIp.getAddress();
             int i =0;
             for (byte b : typeB) {header[i] = b;i++;}
             for (byte b : timeStIn) {header[i] = b;i++;}
             for (byte b : timeStJump) {header[i] = b;i++;}
             for (byte b : jumpB) {header[i] = b;i++;}
             for (byte b : ip) {header[i] = b;i++;}
+            for (byte b : neighIP){header[i] = b;i++;}
         } catch (IOException e) {
             //TODO
             e.printStackTrace();
@@ -61,6 +65,7 @@ public class FTRapidV2 {
             this.LastJumpTimeSt = Serialize.deserializeLong(Arrays.copyOfRange(ftrapidV2,24,38));
             this.Jumps = Serialize.deserializeInteger(Arrays.copyOfRange(ftrapidV2,38,48));
             this.ServerIp = InetAddress.getByAddress(Arrays.copyOfRange(ftrapidV2,48,52));
+            this.NeighbourIp =InetAddress.getByAddress(Arrays.copyOfRange(ftrapidV2,52,56));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -110,6 +115,9 @@ public class FTRapidV2 {
         return this.ServerIp.getHostAddress();
     }
 
+    public String getNeighbourIP(){
+        return this.NeighbourIp.getHostAddress();
+    }
 
     public long getInitialTimeSt() {
         return InitialTimeSt;

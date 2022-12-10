@@ -119,11 +119,17 @@ public interface INeighbourTable {
      */
     long getLastJumpTime(String ip);
 
+    String getInterfaceIp(String ip);
+
+    void setInterfaceIp(String ip, String interfaceIp);
+
     /**
      * Locks write lock in case there is a need to hold the lock for multiple operations.
      */
     void writeLock();
 
+
+    List<String> getAllNeighbourInterfaces();
     /**
      * Unlocks write locks.
      */

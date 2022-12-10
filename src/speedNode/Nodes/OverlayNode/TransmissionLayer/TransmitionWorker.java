@@ -36,13 +36,13 @@ public class TransmitionWorker implements Runnable{
         // Initialization of the communication Socket
 
         try{
-            this.ds = new DatagramSocket(PORT,InetAddress.getByName(bindAddr));
-        }catch (SocketException | UnknownHostException e){
+            this.ds = new DatagramSocket(PORT);
+        }catch (SocketException e){
             System.out.println("Error in Socket initialization!!");
             e.printStackTrace();
             System.exit(-1);
         }
-
+        
         // Initialize the two slaves
         ReceiverSlave rs = new ReceiverSlave(ds,inputQueue);
         Thread receiver = new Thread(rs);
@@ -66,9 +66,9 @@ public class TransmitionWorker implements Runnable{
             /////// Start processing
 
             // Origin IP of the packet// Had to remove the first character
+
+
             String ip = input.getAddress().getHostAddress();
-
-
 
             // Package that will be sent
             FTRapidV2 newPackage = null;
@@ -77,30 +77,31 @@ public class TransmitionWorker implements Runnable{
             if (this.clientTable.getAllServers().contains(ip)) {
                 // Wraps the RTP package in a FTRapid one
                 long timestamp = System.nanoTime();
-                newPackage = new FTRapidV2(timestamp,timestamp, 0, input.getData(), input.getLength(),ip);
+                newPackage = new FTRapidV2(timestamp,timestamp, 0, input.getData(), input.getLength(),ip,bindAddr);
 
             }
             // Else if it comes from a neighbour
-            else if (this.neighbourTable.getNeighbours().contains(ip)) {
+            else if (this.neighbourTable.getAllNeighbourInterfaces().contains(ip)) {
 
                 FTRapidV2 oldPacket = new FTRapidV2(input.getData(), input.getLength());
                 long initTimeSt = oldPacket.getInitialTimeSt();
                 int jumps = oldPacket.getJumps();
                 String serverIP = oldPacket.getServerIP();
                 long currTime = System.nanoTime();
+                String neighbourIP = oldPacket.getNeighbourIP();
 
                 if (this.clientTable.getAllClients().size() >0){
                     //verificar se existe delay, e alertar na routing table se sim
-                    this.routingTable.verifyDelay(serverIP,ip,jumps+1,currTime-initTimeSt);
+                    this.routingTable.verifyDelay(serverIP,neighbourIP,jumps+1,currTime-initTimeSt);
                 }
 
-               this.routingTable.updateMetrics(serverIP,ip,jumps+1,currTime-initTimeSt);
+               this.routingTable.updateMetrics(serverIP,neighbourIP,jumps+1,currTime-initTimeSt);
                 // Update neighbour jump // Here we could detect a delay in the jump
-                this.neighbourTable.updateLastJumpTime(ip,currTime - oldPacket.getLastJumpTimeSt());
+                this.neighbourTable.updateLastJumpTime(neighbourIP,currTime - oldPacket.getLastJumpTimeSt());
 
-                newPackage = new FTRapidV2(initTimeSt,currTime,jumps+1, oldPacket.getPayload(), oldPacket.getPayloadLength(),serverIP );
+                newPackage = new FTRapidV2(initTimeSt,currTime,jumps+1, oldPacket.getPayload(), oldPacket.getPayloadLength(),serverIP,bindAddr );
 
-                if (i%100==0) System.out.println("TRANSMISSION: Recebi umm pacote de " + ip + "com delay de " + (currTime-initTimeSt));
+                if (i%100==0) System.out.println("TRANSMISSION: Recebi um pacote de " + ip + " com delay de " + (currTime-initTimeSt)/1000);
                 i++;
             }
 
@@ -113,7 +114,8 @@ public class TransmitionWorker implements Runnable{
 
                 for (String ipDest : nodeList) {
                     try {
-                        DatagramPacket output = new DatagramPacket(newPackage.getData(), newPackage.getLength(), InetAddress.getByName(ipDest), PORT);
+                        String interfaceIP = this.neighbourTable.getInterfaceIp(ipDest);
+                        DatagramPacket output = new DatagramPacket(newPackage.getData(), newPackage.getLength(), InetAddress.getByName(interfaceIP), PORT);
                         // Coloca datagrama na queue para envio
                         outputQueue.pushElem(output);
                     } catch (UnknownHostException ignored) {}

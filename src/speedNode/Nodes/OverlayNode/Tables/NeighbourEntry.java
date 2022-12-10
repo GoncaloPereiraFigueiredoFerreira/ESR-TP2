@@ -2,13 +2,16 @@ package speedNode.Nodes.OverlayNode.Tables;
 
 import speedNode.Nodes.OverlayNode.ControlLayer.ConnectionHandler;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class NeighbourEntry {
 
     private String ip;
     private ConnectionHandler connectionHandler;
     private boolean wantsStream;
     private long timestamp;
-
+    private String interfaceIp;
     /*
      * Columns:
      *
@@ -24,6 +27,7 @@ public class NeighbourEntry {
         this.connectionHandler = connectionHandler;
         this.wantsStream = wantsStream;
         this.timestamp = timestamp;
+        this.interfaceIp = "";
     }
 
     public String getIp() {
@@ -60,6 +64,14 @@ public class NeighbourEntry {
 
     public void setTimestamp(long timestamp) {
         this.timestamp = timestamp;
+    }
+
+    public String getInterfaceIP(){
+        return this.interfaceIp;
+    }
+
+    public void setInterfaceIp(String interfaceIp){
+        this.interfaceIp = interfaceIp;
     }
 
     @Override

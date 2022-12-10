@@ -188,6 +188,23 @@ public class NeighbourTable implements INeighbourTable{
         }
     }
 
+    public String getInterfaceIp(String ip){
+        return this.neighbours.get(ip).getInterfaceIP();
+    }
+
+    public List<String> getAllNeighbourInterfaces(){
+        List<String> ips = new ArrayList<>();
+        for (NeighbourEntry n : this.neighbours.values()){
+            ips.add(n.getInterfaceIP());
+        }
+        return ips;
+    }
+
+
+    public void setInterfaceIp(String ip, String interfaceIp){
+        this.neighbours.get(ip).setInterfaceIp(interfaceIp);
+    }
+
     @Override
     public void writeLock(){
         rwlock.writeLock().lock();
