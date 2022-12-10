@@ -2,6 +2,8 @@ package speedNode.Utilities;
 
 // Credit: Tuples implementation from https://stackoverflow.com/a/12328838
 
+import java.util.Objects;
+
 public class Tuple<X, Y> {
     public final X fst;
     public final Y snd;
@@ -16,29 +18,18 @@ public class Tuple<X, Y> {
     }
 
     @Override
-    public boolean equals(Object other) {
-        if (other == this) {
-            return true;
-        }
-
-        if (!(other instanceof Tuple)){
-            return false;
-        }
-
-        Tuple<X,Y> other_ = (Tuple<X,Y>) other;
-
-        // this may cause NPE if nulls are valid values for x or y. The logic may be improved to handle nulls properly, if needed.
-        return other_.fst.equals(this.fst) && other_.snd.equals(this.snd);
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Tuple<?, ?> tuple = (Tuple<?, ?>) o;
+        return Objects.equals(fst, tuple.fst) && Objects.equals(snd, tuple.snd);
     }
 
     @Override
     public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((fst == null) ? 0 : fst.hashCode());
-        result = prime * result + ((snd == null) ? 0 : snd.hashCode());
-        return result;
+        return Objects.hash(fst, snd);
     }
+
     @Override
     public Tuple<X,Y> clone(){
         return new Tuple<>(this.fst,this.snd);

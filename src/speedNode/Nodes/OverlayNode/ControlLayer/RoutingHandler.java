@@ -108,10 +108,8 @@ public class RoutingHandler implements Runnable {
 
                 String newProvIP = newRoute.snd;
 
-                if(newProvIP.equals(prevProvIP)){
-                    sendActivateRouteResponse(true);
-                    return;
-                }
+                if(newProvIP.equals(prevProvIP))
+                    prevProvIP = null;
 
                 //Register node that is going to be contacted to activate the route
                 nodesAskedToActivateRoute.add(newProvIP);
@@ -200,8 +198,14 @@ public class RoutingHandler implements Runnable {
     }
 
     private void sendActivateRouteRequest(String neighbourIP, List<String> contacted) throws IOException {
-        TaggedConnection tc = neighbourTable.getConnectionHandler(neighbourIP).getTaggedConnection();
-        tc.send(0, Tags.ACTIVATE_ROUTE, Serialize.serializeListOfIPs(contacted));
+        try {
+            System.out.println("SENDING ACTIVATE ROUTE REQUEST TO " + neighbourIP);
+            TaggedConnection tc = neighbourTable.getConnectionHandler(neighbourIP).getTaggedConnection();
+            tc.send(0, Tags.ACTIVATE_ROUTE, Serialize.serializeListOfIPs(contacted));
+        }catch (IOException ioe){
+            activateBestRouteActive = false;
+            activateBestRoute(null, null);
+        }
     }
 
     /**
@@ -218,6 +222,7 @@ public class RoutingHandler implements Runnable {
 
             for (String n : neighboursToContact) {
                 try {
+                    System.out.println("SENDING ACTIVATE ROUTE RESPONSE TO " + n);
                     TaggedConnection tc = neighbourTable.getConnectionHandler(n).getTaggedConnection();
                     tc.send(0, Tags.RESPONSE_ACTIVATE_ROUTE, Serialize.serializeBoolean(response));
                     if (response) neighbourTable.updateWantsStream(n, true);

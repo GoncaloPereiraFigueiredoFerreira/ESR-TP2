@@ -546,7 +546,7 @@ public class ControlWorker implements Runnable{
                        floodControl.getNextFloodIndex(server), //flood identification
                        server, //server identification
                        "0", //nr of jumps
-                       Long.toString(System.currentTimeMillis())); //timestamp
+                       Long.toString(System.nanoTime())); //timestamp
     }
 
     private void handleFloodFrame(String ip, Frame frame) throws IOException{
@@ -554,7 +554,7 @@ public class ControlWorker implements Runnable{
         var previous_msg = Serialize.deserializeListOfStrings(frame.getData());
         String serverIp = previous_msg.get(0);
         int jumps = Integer.parseInt(previous_msg.get(1)) + 1;
-        long time = System.currentTimeMillis() - Long.parseLong(previous_msg.get(2));
+        long time = System.nanoTime() - Long.parseLong(previous_msg.get(2));
 
         //Registering the node that sent the frame, in order to avoid spreading the flood back to the node it came from
         int floodIndex = frame.getNumber();
@@ -567,6 +567,7 @@ public class ControlWorker implements Runnable{
             //Get all neighbours and removes the ones that already got flooded
             List<String> neighbours = neighbourTable.getNeighbours();
             neighbours.removeAll(floodedNodes);
+            neighbours.remove(ip);
 
             //Sends the flood frame to every node that has not been flooded and is active
             sendFloodFrame(neighbours, // list of neighbours that should receive the flood
@@ -576,7 +577,7 @@ public class ControlWorker implements Runnable{
                            previous_msg.get(2)); //timestamp
 
             //inserting a server path to Routing Table
-            routingTable.addServerPath(serverIp, ip, jumps, (float) time, false);
+            routingTable.addServerPath(serverIp, ip, jumps, time, false);
 
             routingTable.printTables(); //TODO - remover aqui
         }
@@ -600,10 +601,7 @@ public class ControlWorker implements Runnable{
                     TaggedConnection tc = ch.getTaggedConnection();
 
                     //Creates the frame data
-                    List<String> floodMsg = new ArrayList<>();
-                    floodMsg.add(server);
-                    floodMsg.add(nrOfJumps);
-                    floodMsg.add(timestamp);
+                    List<String> floodMsg = List.of(server, nrOfJumps, timestamp);
                     byte[] data = Serialize.serializeListOfStrings(floodMsg);
 
                     //Sends the frame to the neighbour

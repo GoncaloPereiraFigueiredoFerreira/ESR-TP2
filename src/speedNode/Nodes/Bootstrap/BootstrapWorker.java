@@ -37,7 +37,7 @@ public class BootstrapWorker implements Runnable{
     public void run() {
         try {
             Frame frame = connection.receive();
-            System.out.println("Received with number:" + frame.getNumber() + " | tag: " + frame.getTag() + " | content: " + Arrays.toString(frame.getData()));
+            System.out.println("Received with number:" + frame.getNumber() + " | tag: " + frame.getTag());
 
             switch (frame.getTag()) {
                 case Tags.REQUEST_NEIGHBOURS_EXCHANGE:
@@ -80,6 +80,6 @@ public class BootstrapWorker implements Runnable{
             responseList = new ArrayList<>();
 
         connection.send(0,Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(responseList));
-        System.out.println("Sent request with tag " + Tags.REQUEST_NEIGHBOURS_EXCHANGE);
+        System.out.println("[Sent] tag: " + Tags.REQUEST_NEIGHBOURS_EXCHANGE + " | content: " + responseList);
     }
 }

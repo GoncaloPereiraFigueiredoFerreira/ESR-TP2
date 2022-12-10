@@ -24,7 +24,7 @@ public interface IRoutingTable {
      * @param active If this connection is active
      * @return Returns true if the connection was successfully added
      */
-    boolean addServerPath(String ServerIp, String Provider, int Jumps, float Time, boolean active);
+    boolean addServerPath(String ServerIp, String Provider, int Jumps, long Time, boolean active);
 
     /**
      * Updates the metrics to a server path
@@ -34,7 +34,7 @@ public interface IRoutingTable {
      * @param Time The new time it takes
      * @return Returns true if the connection was successfully added
      */
-    boolean updateMetrics(String ServerIp,String Provider, int Jumps, float Time);
+    boolean updateMetrics(String ServerIp,String Provider, int Jumps, long Time);
 
     /**
      * Updates the active state of a connection
@@ -53,7 +53,7 @@ public interface IRoutingTable {
     boolean isRouteActive(String ServerIp, String Provider);
 
 
-    Tuple<Integer,Float> getMetrics(String ServerIp, String Provider);
+    Tuple<Integer,Long> getMetrics(String ServerIp, String Provider);
 
     Tuple<String,String> getActiveRoute();
 

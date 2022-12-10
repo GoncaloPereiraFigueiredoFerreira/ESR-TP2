@@ -25,8 +25,8 @@ public class LoggingToFile {
             ConsoleHandler consoleHandler = new ConsoleHandler();
             logger.addHandler(consoleHandler);
 
-            SimpleFormatter formatter = new SimpleFormatter();
-            //MyFormatter formatter = new MyFormatter("---");
+            //SimpleFormatter formatter = new SimpleFormatter();
+            MyFormatter formatter = new MyFormatter("---");
             fh.setFormatter(formatter);
             consoleHandler.setFormatter(formatter);
         } catch (SecurityException e) {
@@ -69,8 +69,8 @@ public class LoggingToFile {
             ConsoleHandler consoleHandler = new ConsoleHandler();
             logger.addHandler(consoleHandler);
 
-            SimpleFormatter formatter = new SimpleFormatter();
-            //MyFormatter formatter = new MyFormatter(newLogName);
+            //SimpleFormatter formatter = new SimpleFormatter();
+            MyFormatter formatter = new MyFormatter(newLogName);
             fh.setFormatter(formatter);
             consoleHandler.setFormatter(formatter);
 

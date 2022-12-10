@@ -18,7 +18,7 @@ public class RoutingTable implements IRoutingTable{
      *    IP of the server  | IP of the Providing Neighbour  |    Nº Jumps till server  |  Time till Server  |  Flag : Is route active
      *
      */
-    private final HashMap<Tuple<String,String>, Tuple<Integer,Float>> metricsTable = new HashMap<>();
+    private final HashMap<Tuple<String,String>, Tuple<Integer,Long>> metricsTable = new HashMap<>();
     private final HashMap<Tuple<String,String>, Boolean> activeRoute = new HashMap<>();
 
     /**
@@ -38,7 +38,7 @@ public class RoutingTable implements IRoutingTable{
     }
 
     @Override
-    public boolean addServerPath(String ServerIp, String Provider, int Jumps, float Time, boolean active) {
+    public boolean addServerPath(String ServerIp, String Provider, int Jumps, long Time, boolean active) {
         Tuple<String, String> temp = new Tuple<>(ServerIp, Provider);
         try {
             readWriteLockProviders.writeLock().lock();
@@ -67,14 +67,14 @@ public class RoutingTable implements IRoutingTable{
     }
 
     @Override
-    public boolean updateMetrics(String ServerIp, String Provider, int Jumps, float Time) {
+    public boolean updateMetrics(String ServerIp, String Provider, int Jumps, long Time) {
         Tuple<String, String> temp = new Tuple<>(ServerIp, Provider);
         try {
             readWriteLockMetrics.writeLock().lock();
             if (!this.metricsTable.containsKey(temp)) return false;
             else{
-                Tuple<Integer,Float> temp2 = new Tuple<>(Jumps,Time);
-                this.metricsTable.replace(temp,temp2);
+                Tuple<Integer,Long> temp2 = new Tuple<>(Jumps,Time);
+                this.metricsTable.put(temp,temp2);
                 return true;
             }
 
@@ -142,7 +142,7 @@ public class RoutingTable implements IRoutingTable{
     }
 
     @Override
-    public Tuple<Integer,Float> getMetrics(String ServerIp, String Provider) {
+    public Tuple<Integer,Long> getMetrics(String ServerIp, String Provider) {
         try{
             this.readWriteLockMetrics.readLock().lock();
             Tuple<String,String> t = new Tuple<>(ServerIp,Provider);
@@ -172,15 +172,15 @@ public class RoutingTable implements IRoutingTable{
     public Tuple<String, String> activateBestRoute() {
         try{
             this.readWriteLockMetrics.readLock().lock();
-            float wiggleRoom = 0.05f;
-            float score;
-            float minScore = Float.MAX_VALUE;
+            float wiggleRoom = 0.15f; // todo - VALORIZAR MAIS OS SALTOS
+            long score;
+            long minScore = Long.MAX_VALUE;
             Tuple<String,String> bestRoute =null;
 
 
 
-            for (Map.Entry<Tuple<String,String>,Tuple<Integer,Float>> entry : this.metricsTable.entrySet()){
-                score = entry.getValue().snd + (entry.getValue().fst * wiggleRoom);
+            for (Map.Entry<Tuple<String,String>,Tuple<Integer,Long>> entry : this.metricsTable.entrySet()){
+                score = entry.getValue().snd + (long) (entry.getValue().fst * wiggleRoom);
                 if (score < minScore) {
                     minScore= score;
                     bestRoute = entry.getKey();
@@ -201,15 +201,15 @@ public class RoutingTable implements IRoutingTable{
     public Tuple<String, String> activateBestRoute(Set<String> excluded) {
         try{
             this.readWriteLockMetrics.readLock().lock();
-            float wiggleRoom = 0.05f;
-            float score;
-            float minScore = Float.MAX_VALUE;
+            float wiggleRoom = 0.15f; // todo - VALORIZAR MAIS OS SALTOS
+            long score;
+            long minScore = Long.MAX_VALUE;
             Tuple<String,String> bestRoute =null;
 
 
-            for (Map.Entry<Tuple<String,String>,Tuple<Integer,Float>> entry : this.metricsTable.entrySet()){
+            for (Map.Entry<Tuple<String,String>,Tuple<Integer,Long>> entry : this.metricsTable.entrySet()){
                 if (!excluded.contains(entry.getKey().snd) ) { // if neighbour isn't excluded from being the best route
-                    score = entry.getValue().snd + (entry.getValue().fst * wiggleRoom);
+                    score = entry.getValue().snd + (long) (entry.getValue().fst * wiggleRoom);
                     System.out.println("SCORE for neighbour: " + entry.getKey() + " -> " + score);
                     if (score < minScore) {
                         minScore = score;
@@ -282,12 +282,11 @@ public class RoutingTable implements IRoutingTable{
 
             var metrics = this.metricsTable.get(new Tuple<>(serverIP,Provider));
             System.out.println("New time: " + newTime + " | Oldtime: "  + metrics.snd );
-            if (newTime - metrics.snd > 0.05 * metrics.snd){
+            if (newTime - metrics.snd > 0.2 * metrics.snd){
                 System.out.println("ROUTING TABLE: DELAY DETETADO");
                 System.out.println("DELAYED TIME: "+ newTime);
                 System.out.println("RECORDED TIME: "+ metrics.snd);
                 this.delay = true;
-                this.updateMetrics(serverIP,Provider,jumps,newTime);
                 return true;
             }
             return false;

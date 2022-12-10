@@ -92,9 +92,9 @@ public class FloodControl {
             lock.lock();
             Set<String> set = new HashSet<>();
 
-            var sentSet = floodSent.get(server);
-            if (sentSet != null)
-                set.addAll(sentSet);
+            //var sentSet = floodSent.get(server);
+            //if (sentSet != null)
+            //    set.addAll(sentSet);
 
             var receivedSet = floodReceived.get(server);
             if (receivedSet != null)

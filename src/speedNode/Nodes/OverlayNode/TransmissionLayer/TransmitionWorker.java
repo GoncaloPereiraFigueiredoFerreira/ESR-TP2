@@ -76,7 +76,7 @@ public class TransmitionWorker implements Runnable{
             // If the package comes from a server
             if (this.clientTable.getAllServers().contains(ip)) {
                 // Wraps the RTP package in a FTRapid one
-                long timestamp =System.currentTimeMillis();
+                long timestamp = System.nanoTime();
                 newPackage = new FTRapidV2(timestamp,timestamp, 0, input.getData(), input.getLength(),ip);
 
             }
@@ -87,14 +87,14 @@ public class TransmitionWorker implements Runnable{
                 long initTimeSt = oldPacket.getInitialTimeSt();
                 int jumps = oldPacket.getJumps();
                 String serverIP = oldPacket.getServerIP();
-                long currTime = System.currentTimeMillis();
+                long currTime = System.nanoTime();
 
                 if (this.clientTable.getAllClients().size() >0){
                     //verificar se existe delay, e alertar na routing table se sim
                     this.routingTable.verifyDelay(serverIP,ip,jumps+1,currTime-initTimeSt);
                 }
 
-                else { this.routingTable.updateMetrics(serverIP,ip,jumps+1,currTime-initTimeSt);}
+               this.routingTable.updateMetrics(serverIP,ip,jumps+1,currTime-initTimeSt);
                 // Update neighbour jump // Here we could detect a delay in the jump
                 this.neighbourTable.updateLastJumpTime(ip,currTime - oldPacket.getLastJumpTimeSt());
 
