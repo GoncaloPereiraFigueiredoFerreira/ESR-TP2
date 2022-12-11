@@ -44,6 +44,6 @@ public interface IClientTable {
      */
     boolean removeClient(String IP);
 
-
+    boolean containsServer(String IP);
 
 }

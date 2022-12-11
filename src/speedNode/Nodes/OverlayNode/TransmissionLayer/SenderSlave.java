@@ -23,7 +23,6 @@ public class SenderSlave  implements Runnable{
         while (working) {
 
             // Waits for the outputqueue to have at least one datagram inside
-            outputQueue.awaitPush();
             DatagramPacket dp = outputQueue.popElem();
             try {
                 ds.send(dp);

@@ -78,6 +78,8 @@ public class Bootstrap implements Runnable{
         for(int i = 0; i < args.size(); i++){
             switch (args.get(i)){
                 case "-filename":
+                case "-file":
+                case "-f":
                     if(i + 1 < args.size()){
                         filename = args.get(i+1);
                         i++;

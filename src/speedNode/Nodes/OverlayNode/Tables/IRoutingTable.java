@@ -21,7 +21,7 @@ public interface IRoutingTable {
      * @param Provider The ip of the neighbour node that transmits the stream
      * @param Jumps The number of jumps to the server to the current node
      * @param Time The measured time from the server to the current node
-     * @param active If this connection is active
+     * @param active If the route is active
      * @return Returns true if the connection was successfully added
      */
     boolean addServerPath(String ServerIp, String Provider, int Jumps, long Time, boolean active);

@@ -192,12 +192,16 @@ public class NeighbourTable implements INeighbourTable{
         return this.neighbours.get(ip).getInterfaceIP();
     }
 
-    public List<String> getAllNeighbourInterfaces(){
-        List<String> ips = new ArrayList<>();
-        for (NeighbourEntry n : this.neighbours.values()){
-            ips.add(n.getInterfaceIP());
+    public boolean anyNeighbourUsesInterfaceIP(String interfaceIP){
+        try {
+            rwlock.readLock().lock();
+            for (NeighbourEntry n : this.neighbours.values())
+                if(n.getInterfaceIP().equals(interfaceIP))
+                    return true;
+            return false;
+        }finally {
+            rwlock.readLock().unlock();
         }
-        return ips;
     }
 
 

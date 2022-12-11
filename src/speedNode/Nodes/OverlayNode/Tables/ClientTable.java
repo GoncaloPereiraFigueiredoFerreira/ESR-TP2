@@ -1,14 +1,10 @@
 package speedNode.Nodes.OverlayNode.Tables;
 
-import speedNode.Utilities.Tuple;
-
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.stream.Collectors;
 
 public class ClientTable implements IClientTable{
     /**
@@ -16,8 +12,8 @@ public class ClientTable implements IClientTable{
      *                 IP address of client     |        Type of client (either "Server" or "Client")
      */
 
-    private final HashSet<String> ClientTable = new HashSet<>();
-    private final HashSet<String> ServerTable = new HashSet<>();
+    private final HashSet<String> clientTable = new HashSet<>();
+    private final HashSet<String> serverTable = new HashSet<>();
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
 
@@ -27,9 +23,9 @@ public class ClientTable implements IClientTable{
     public boolean addNewClient(String Ip) {
         try{
             readWriteLock.writeLock().lock();
-            if (this.ClientTable.contains(Ip)) return false;
+            if (this.clientTable.contains(Ip)) return false;
             else{
-                this.ClientTable.add(Ip);
+                this.clientTable.add(Ip);
                 return true;
             }
         }finally {
@@ -41,9 +37,9 @@ public class ClientTable implements IClientTable{
     public boolean addNewServer(String Ip) {
         try{
             readWriteLock.writeLock().lock();
-            if (this.ServerTable.contains(Ip))return false;
+            if (this.serverTable.contains(Ip))return false;
             else{
-                this.ServerTable.add(Ip);
+                this.serverTable.add(Ip);
                 return true;
             }
         }finally {
@@ -56,7 +52,7 @@ public class ClientTable implements IClientTable{
     public List<String> getAllClients() {
         try {
             readWriteLock.readLock().lock();
-            return new ArrayList<>(this.ClientTable);
+            return new ArrayList<>(this.clientTable);
 
         }finally {
             readWriteLock.readLock().unlock();
@@ -67,7 +63,7 @@ public class ClientTable implements IClientTable{
     public List<String> getAllServers() {
         try {
             readWriteLock.readLock().lock();
-            return new ArrayList<>(this.ServerTable);
+            return new ArrayList<>(this.serverTable);
         }finally {
             readWriteLock.readLock().unlock();
         }
@@ -77,13 +73,23 @@ public class ClientTable implements IClientTable{
     public boolean removeClient(String IP) {
         try {
             readWriteLock.writeLock().lock();
-            if (!this.ClientTable.contains(IP)) return false;
+            if (!this.clientTable.contains(IP)) return false;
             else {
-                this.ClientTable.remove(IP);
+                this.clientTable.remove(IP);
                 return true;
             }
         }finally {
             readWriteLock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public boolean containsServer(String IP) {
+        try {
+            readWriteLock.readLock().lock();
+            return serverTable.contains(IP);
+        }finally {
+            readWriteLock.readLock().unlock();
         }
     }
 }

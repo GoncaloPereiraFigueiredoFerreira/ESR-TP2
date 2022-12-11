@@ -17,7 +17,7 @@ public class TransmissionWorker implements Runnable{
     private DatagramSocket ds;
     private static final int PORT=50000;
     private static final int CLPORT = 25000;
-    public static final int MAX_UDP_P_SIZE = 60000;
+    public static final int MAX_UDP_P_SIZE = 30000;
     private final String bindAddr ;
 
     public TransmissionWorker(String bindAddr, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
@@ -80,7 +80,7 @@ public class TransmissionWorker implements Runnable{
 
             }
             // Else if it comes from a neighbour
-            else if (this.neighbourTable.getAllNeighbourInterfaces().contains(ip)) {
+            else if (this.neighbourTable.anyNeighbourUsesInterfaceIP(ip)) {
 
                 RapidFTProtocol oldPacket = new RapidFTProtocol(input.getData(), input.getLength());
                 long initTimeSt = oldPacket.getInitialTimeSt();
@@ -100,8 +100,8 @@ public class TransmissionWorker implements Runnable{
 
                 newPackage = new RapidFTProtocol(initTimeSt,currTime,jumps+1, oldPacket.getPayload(),serverIP,bindAddr );
 
-                //if (i%100==0) System.out.println("TRANSMISSION: Recebi um pacote de " + ip + " com delay de " + (currTime-initTimeSt)/1000);
-                //i++;
+                if (i%100==0) System.out.println("TRANSMISSION: Recebi um pacote de " + ip + " com delay de " + (currTime-initTimeSt)/1000);
+                i++;
             }
 
 

@@ -357,6 +357,14 @@ public class ControlWorker implements Runnable{
             neighbourTable.writeLock();
 
             List<String> ipv4InterfacesNeighbour = Serialize.deserializeListOfStrings(frame.getData());
+            String neighbourName = identifyNeighbour(ipv4InterfacesNeighbour);
+            if(neighbourName == null){
+                logger.info(neighbour + " is not a neighbour!");
+                tc.close();
+                return;
+            }
+            neighbour = neighbourName;
+
             String interfaceIP = chooseInterface(ipv4InterfacesNeighbour);
 
             logger.info("\n\n ----->INTERFACE "+ interfaceIP +" DE CONTACTO COM: " + neighbour +"\n\n\n" );
@@ -386,6 +394,13 @@ public class ControlWorker implements Runnable{
             }
         }
         finally { neighbourTable.writeUnlock(); }
+    }
+
+    private String identifyNeighbour(List<String> ipv4InterfacesNeighbour) {
+        for(String neighbour : neighbourTable.getNeighbours())
+            if(ipv4InterfacesNeighbour.contains(neighbour))
+                return neighbour;
+        return null;
     }
 
     private void acceptNewClient(String client, TaggedConnection tc) throws IOException {
@@ -580,42 +595,49 @@ public class ControlWorker implements Runnable{
         List<String> neighbours = neighbourTable.getNeighbours();
 
         //Iterates through all neighbours and sends the flood frame for everyone that is active
+        List<String> route = new ArrayList<>();
+        route.add(bindAddress);
         sendFloodFrame(neighbours, // list of neighbours that should receive the flood
                        floodControl.getNextFloodIndex(server), //flood identification
-                       server, //server identification
-                       "0", //nr of jumps
-                       Long.toString(System.nanoTime())); //timestamp
+                       new FloodControl.FloodInfo(server, 0, System.nanoTime(), route));
     }
 
     private void handleFloodFrame(String ip, Frame frame) throws IOException{
         //Deserialize frame data
-        var previous_msg = Serialize.deserializeListOfStrings(frame.getData());
-        String serverIp = previous_msg.get(0);
-        int jumps = Integer.parseInt(previous_msg.get(1)) + 1;
-        long time = System.nanoTime() - Long.parseLong(previous_msg.get(2));
+        FloodControl.FloodInfo floodInfo = FloodControl.FloodInfo.deserialize(frame.getData());
+
+        //Ignores own flood frame
+        if(clientTable.containsServer(floodInfo.server) || floodInfo.route.contains(bindAddress)) return;
 
         //Registering the node that sent the frame, in order to avoid spreading the flood back to the node it came from
         int floodIndex = frame.getNumber();
-        boolean validFlood = floodControl.receivedFlood(serverIp, ip, floodIndex);
+        boolean validFlood = floodControl.validateFlood(floodInfo.server, floodIndex);
 
         if(validFlood) {
             //Get nodes that already got the flood frame
-            var floodedNodes = floodControl.floodedNodes(serverIp);
+            var floodedNodes = floodControl.floodedNodes(floodInfo.server);
 
             //Get all neighbours and removes the ones that already got flooded
             List<String> neighbours = neighbourTable.getNeighbours();
             neighbours.removeAll(floodedNodes);
             neighbours.remove(ip);
 
+            //includes the node itself in the route
+            floodInfo.route.add(bindAddress);
+
+            //increments number of jumps
+            floodInfo.jumps++;
+
             //Sends the flood frame to every node that has not been flooded and is active
             sendFloodFrame(neighbours, // list of neighbours that should receive the flood
                            floodIndex, //flood identification
-                           serverIp, //server identification
-                           Integer.toString(jumps), //nr of jumps
-                           previous_msg.get(2)); //timestamp
+                           floodInfo); //timestamp
 
-            //inserting a server path to Routing Table
-            routingTable.addServerPath(serverIp, ip, jumps, time, false);
+            //inserting/updating a server path to Routing Table
+            if(!routingTable.existsInRoutingTable(floodInfo.server, ip))
+                routingTable.addServerPath(floodInfo.server, ip, floodInfo.jumps, System.nanoTime() - floodInfo.timestamp, false);
+            else
+                routingTable.updateMetrics(floodInfo.server, ip, floodInfo.jumps, System.nanoTime() - floodInfo.timestamp);
 
             routingTable.printTables(); //TODO - remover aqui
         }
@@ -625,11 +647,9 @@ public class ControlWorker implements Runnable{
      * Sends flood frame to every neighbour present in the given list.
      * @param neighbours List of neighbours that should receive the flood frame
      * @param floodIndex Index of the flood
-     * @param server Identification of the server
-     * @param nrOfJumps Number of jumps to be written in the frame
-     * @param timestamp Timestamp to be written in the frame
+     * @param floodInfo Flood info
      */
-    private void sendFloodFrame(List<String> neighbours, int floodIndex, String server, String nrOfJumps, String timestamp){
+    private void sendFloodFrame(List<String> neighbours, int floodIndex, FloodControl.FloodInfo floodInfo){
         for (String neighbour : neighbours) {
             try {
                 ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbour);
@@ -639,23 +659,22 @@ public class ControlWorker implements Runnable{
                     TaggedConnection tc = ch.getTaggedConnection();
 
                     //Creates the frame data
-                    List<String> floodMsg = List.of(server, nrOfJumps, timestamp);
-                    byte[] data = Serialize.serializeListOfStrings(floodMsg);
+                    byte[] data = floodInfo.serialize();
 
                     //Sends the frame to the neighbour
                     tc.send(floodIndex, Tags.FLOOD, data);
 
                     //Registers that the neighbour has received the flood frame to avoid repeting the send operation
-                    floodControl.sentFlood(server, tc.getHost(), floodIndex);
+                    floodControl.sentFlood(floodInfo.server, neighbour, floodIndex);
 
-                    logger.info("Sent flood frame from server " + server + " with index " + floodIndex + " to " + neighbour);
+                    logger.info("Sent flood frame from server " + floodInfo.server + " with index " + floodIndex + " to " + neighbour);
                 }else
-                    logger.info(neighbour + " inactive. Did not send flood frame from server " + server);
+                    logger.info(neighbour + " inactive. Did not send flood frame from server " + floodInfo.server);
 
             }catch (IOException ignored){
                 //Ignores the Exception that happened for a specific neighbour in order to not disrupt
                 // the process for the rest of the nodes
-                logger.warning("IO Exception when sending flood frame from server " + server + " to " + neighbour);
+                logger.warning("IO Exception when sending flood frame from server " + floodInfo.server + " to " + neighbour);
             }
         }
     }
