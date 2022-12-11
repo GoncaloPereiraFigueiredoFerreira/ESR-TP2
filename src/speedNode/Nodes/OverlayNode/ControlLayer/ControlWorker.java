@@ -328,6 +328,7 @@ public class ControlWorker implements Runnable{
                             case Tags.REQUEST_NEIGHBOUR_CONNECTION -> acceptNeighbourConnection(contact, tc,frame);
                             case Tags.CONNECT_AS_CLIENT_EXCHANGE -> acceptNewClient(contact, tc);
                             case Tags.CONNECT_AS_SERVER_EXCHANGE -> acceptNewServer(contact, tc);
+                            case Tags.CLIENT_CLOSE_CONNECTION -> closeClientConnection(contact);
                         }
                     } catch (IOException ignored) {
                         logger.warning("IO Exception while handling frame from " + contact);
@@ -394,6 +395,11 @@ public class ControlWorker implements Runnable{
             }
         }
         finally { neighbourTable.writeUnlock(); }
+    }
+
+    private void closeClientConnection(String contact) {
+        clientTable.removeClient(contact);
+        routingHandler.pushRoutingFrame(null, new Frame(0, Tags.DEACTIVATE_ROUTE, new byte[]{}));
     }
 
     private String identifyNeighbour(List<String> ipv4InterfacesNeighbour) {
@@ -543,44 +549,6 @@ public class ControlWorker implements Runnable{
 
         routingHandler.waitForRouteUpdate();
     }
-
-
-    //tentar ativar,
-    //  ->se n conseguir, enviar a dizer q n é possivel,
-    //  ->se conseguir enviar a dizer q conseguiu
-    //preciso desativar rota se for mudada
-    /*
-    private void activateBestRoute() throws IOException {
-
-        //Is directly not connected to a server
-        if (clientTable.getAllServers().size() == 0) {
-            Tuple<String, String> prevRoute = routingTable.getActiveRoute();
-            Tuple<String, String> newRoute = routingTable.activateBestRoute();
-
-            var newProvidingIP = newRoute.snd;
-
-            ConnectionHandler newProvCH = neighbourTable.getConnectionHandler(newProvidingIP);
-            TaggedConnection newProvTC = newProvCH.getTaggedConnection();
-
-            // Se não existia uma rota antes
-            if (prevRoute == null) {
-                newProvTC.send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
-            } else {
-                var oldProvidingIP = prevRoute.snd;
-                ConnectionHandler oldProvCH = neighbourTable.getConnectionHandler(oldProvidingIP);
-                TaggedConnection oldProvTC = oldProvCH.getTaggedConnection();
-                // se forem diferentes
-                if (!newProvidingIP.equals(oldProvidingIP)) {
-                    assert oldProvTC != null;
-                    oldProvTC.send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
-                    newProvTC.send(0, Tags.ACTIVATE_ROUTE, new byte[]{});
-                }
-
-            }
-        }
-
-        this.routingTable.printTables();
-    }*/
 
     /* ****** Flood ****** */
 
