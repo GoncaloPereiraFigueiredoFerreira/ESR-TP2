@@ -19,8 +19,8 @@ public class SenderSlave  implements Runnable{
     @Override
     public void run() {
         // Fica a espera de uma adição na outputqueue
-        boolean working=true;
-        while (working) {
+
+        while (!Thread.currentThread().isInterrupted()) {
 
             // Waits for the outputqueue to have at least one datagram inside
             DatagramPacket dp = outputQueue.popElem();

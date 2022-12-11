@@ -22,7 +22,7 @@ public class ReceiverSlave implements Runnable{
 
         DatagramPacket dp = new DatagramPacket(new byte[TransmissionWorker.MAX_UDP_P_SIZE], TransmissionWorker.MAX_UDP_P_SIZE);
         try {
-            while(true) {
+            while(!Thread.currentThread().isInterrupted()) {
                 ds.receive(dp);
                 inputQueue.pushElem(dp);
             }

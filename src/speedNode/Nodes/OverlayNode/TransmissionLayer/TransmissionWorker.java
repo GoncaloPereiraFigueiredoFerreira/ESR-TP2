@@ -6,7 +6,9 @@ import speedNode.Nodes.OverlayNode.Tables.INeighbourTable;
 import speedNode.Nodes.OverlayNode.Tables.IRoutingTable;
 
 import java.net.*;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class TransmissionWorker implements Runnable{
     private final INeighbourTable neighbourTable;
@@ -19,13 +21,13 @@ public class TransmissionWorker implements Runnable{
     private static final int CLPORT = 25000;
     public static final int MAX_UDP_P_SIZE = 30000;
     private final String bindAddr ;
+    private final Set<Thread> threads = new HashSet<>();
 
     public TransmissionWorker(String bindAddr, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.clientTable = clientTable;
         this.routingTable = routingTable;
         this.neighbourTable = neighbourTable;
         this.bindAddr = bindAddr;
-
     }
 
     //TODO: Store all threads in a set, in order to shutdown gracefully
@@ -46,20 +48,20 @@ public class TransmissionWorker implements Runnable{
         // Initialize the two slaves
         ReceiverSlave rs = new ReceiverSlave(ds,inputQueue);
         Thread receiver = new Thread(rs);
+        threads.add(receiver);
         receiver.start();
 
         SenderSlave ss = new SenderSlave(ds,outputQueue);
         Thread senderSlave= new Thread(ss);
+        threads.add(senderSlave);
         senderSlave.start();
 
 
 
         // Change this to properly close down worker
-        boolean working = true;
         int i=0;
-        //TODO: Make this end gracefully
-        while (working) {
 
+        while (!Thread.currentThread().isInterrupted()) {
 
             // Awaits for a datagram to be put on the queue
             DatagramPacket input = inputQueue.popElem();
@@ -131,8 +133,21 @@ public class TransmissionWorker implements Runnable{
                 }
             }
         }
+
+        for(Thread t : threads)
+            if(t.isAlive() && !t.isInterrupted())
+                t.interrupt();
+
+        //Waits for threads to stop running and join them
+        for(Thread t : threads) {
+            try { t.join();}
+            catch (InterruptedException ignored) {}
+        }
+    }
+
+
     }
 
 
 
-}
+
