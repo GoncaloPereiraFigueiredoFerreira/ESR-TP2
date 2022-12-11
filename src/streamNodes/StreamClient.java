@@ -5,9 +5,6 @@ package streamNodes;/* ------------------
    colocar o cliente primeiro a correr que o servidor dispara logo!
    ---------------------- */
 
-import speedNode.Utilities.TaggedConnection.Frame;
-import speedNode.Utilities.TaggedConnection.TaggedConnection;
-import speedNode.Utilities.Tags;
 
 import javax.swing.*;
 import java.awt.*;
@@ -19,8 +16,8 @@ import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.Socket;
 import java.net.SocketException;
+import speedNode.IConnectToSpeedNode;
 
 public class StreamClient {
 
@@ -58,7 +55,7 @@ public class StreamClient {
         SpeedNodeIP = speedNodeIP;
         TCPPort = tcpPort;
         //Contactar o servidor primeiro antes da GUI aparecer
-        connectToOverlay();
+        IConnectToSpeedNode.connectClientToOverlay(SpeedNodeIP,TCPPort);
 
         //build GUI
         //--------------------------
@@ -107,7 +104,7 @@ public class StreamClient {
         try {
             // socket e video
             RTPsocket = new DatagramSocket(RTP_RCV_PORT); //init RTP socket (o mesmo para o cliente e servidor)
-            RTPsocket.setSoTimeout(5000); // setimeout to 5s //TODO: WHY 5s
+            RTPsocket.setSoTimeout(5000); // setimeout to 5s 
         } catch (SocketException e) {
             System.out.println("Cliente: erro no socket: " + e.getMessage());
         }
@@ -140,49 +137,6 @@ public class StreamClient {
 
 
 
-    private int connectToOverlay(){
-        try{
-            Socket s = new Socket(SpeedNodeIP, TCPPort);
-            TaggedConnection tc = new TaggedConnection(s);
-            s.setSoTimeout(10000);
-
-            tc.send(0, Tags.CONNECT_AS_CLIENT_EXCHANGE,new byte[]{});
-            System.out.println("Client: A espera de resposta do SpeedNode");
-            Frame frame=  tc.receive();
-            if(frame.getTag()==Tags.CONNECT_AS_CLIENT_EXCHANGE){
-                System.out.println("Client: SpeedNode contactado");
-                return 1;
-            }
-            else if(frame.getTag()==Tags.CANCEL_STREAM){
-                System.out.println("Client: SpeedNode sem rotas disponíveis!");
-                return -1;
-            }
-            else return -1;
-
-        }catch (IOException ioe){
-
-            ioe.printStackTrace();
-            return -1;
-        }
-    }
-
-
-    private int disconnectfromOverlay(){
-        try{
-            Socket s = new Socket(SpeedNodeIP, TCPPort);
-            TaggedConnection tc = new TaggedConnection(s);
-            s.setSoTimeout(10000);
-
-            tc.send(0, Tags.CLIENT_CLOSE_CONNECTION,new byte[]{});
-
-            return 1;
-
-        }catch (IOException ioe){
-            ioe.printStackTrace();
-            return -1;
-        }
-    }
-
 
 
     //------------------------------------
@@ -208,7 +162,7 @@ public class StreamClient {
             System.out.println("Teardown Button pressed !");
             //stop the timer
             cTimer.stop();
-            disconnectfromOverlay();
+            IConnectToSpeedNode.disconnectClientfromOverlay(SpeedNodeIP,TCPPort);
             //exit
             System.exit(0);
         }

@@ -5,10 +5,7 @@ package streamNodes;/* ------------------
    colocar primeiro o cliente a correr, porque este dispara logo
    ---------------------- */
 
-import speedNode.Utilities.TaggedConnection.Frame;
-import speedNode.Utilities.TaggedConnection.TaggedConnection;
-import speedNode.Utilities.Tags;
-
+import speedNode.IConnectToSpeedNode;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -85,7 +82,7 @@ public class StreamServer extends JFrame implements ActionListener {
         label = new JLabel("Send frame #        ", JLabel.CENTER);
         getContentPane().add(label, BorderLayout.CENTER);
 
-        int ret = contactSpeedNode(tcpPort);
+        int ret = IConnectToSpeedNode.connectServerToOverlay(ClientIPAddr.getHostAddress(),tcpPort);
         if (ret==1) sTimer.start();
         else {
             System.out.println("Servidor: Erro no contacto com o SpeedNode");
@@ -135,28 +132,6 @@ public class StreamServer extends JFrame implements ActionListener {
         while (true){}
     }
 
-    private int contactSpeedNode(int tcpPort){
-        try{
-            //PORT tem de ser o do tcp
-            Socket s = new Socket(ClientIPAddr, tcpPort);
-            TaggedConnection tc = new TaggedConnection(s);
-            s.setSoTimeout(10000);
-
-            tc.send(0, Tags.CONNECT_AS_SERVER_EXCHANGE,new byte[]{});
-
-            System.out.println("Servidor: A espera de resposta do SpeedNode... ");
-            Frame frame=  tc.receive();
-            if(frame.getTag()==Tags.CONNECT_AS_SERVER_EXCHANGE){
-                System.out.println("Servidor: SpeedNode contactado! ");
-                // a ligação dps pode ser fechada
-                return 1;
-            }
-            else return -1;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return -1;
-        }
-    }
 
 
         //------------------------
