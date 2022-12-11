@@ -190,7 +190,7 @@ public class ControlWorker implements Runnable{
         try {
             //Creating socket to contact neighbour
             logger.info("Creating socket to contact neighbour " + neighbour + "...");
-            s = createSocket(neighbour, ssPort);
+            s = new Socket(neighbour, ssPort);
             s.setSoTimeout(timeToWaitForClient); //Sets the waiting time till the connection is established, after which the connection is dropped
             TaggedConnection tc = new TaggedConnection(s);
             logger.info("Created socket to contact neighbour " + neighbour + ".");
