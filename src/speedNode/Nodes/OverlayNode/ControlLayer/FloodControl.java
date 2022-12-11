@@ -1,9 +1,9 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.io.*;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class FloodControl {
@@ -41,22 +41,15 @@ public class FloodControl {
     /**
      * If the flood index, of the frame received, is valid, registers that the node has sent the frame of the current flood
      * @param server Server that started the flood
-     * @param node Node that sent the flood frame
      * @param index Received flood index of the server
      * @return "true" if the flood index of the frame received is valid. Otherwise, "false".
      */
-    public boolean receivedFlood(String server, String node, int index){
+    public boolean validateFlood(String server, int index){
         try {
             lock.lock();
             Integer currentIndex = updateFloodVars(server, index);
-
             //If the current index is not the same as the index given, the changes are rejected
-            if(currentIndex != index)
-                return false;
-
-            var receivedSet = floodReceived.get(server);
-            receivedSet.add(node);
-            return true;
+            return currentIndex == index;
         }finally { lock.unlock(); }
     }
 
@@ -92,13 +85,9 @@ public class FloodControl {
             lock.lock();
             Set<String> set = new HashSet<>();
 
-            //var sentSet = floodSent.get(server);
-            //if (sentSet != null)
-            //    set.addAll(sentSet);
-
-            var receivedSet = floodReceived.get(server);
-            if (receivedSet != null)
-                set.addAll(receivedSet);
+            var sentSet = floodSent.get(server);
+            if (sentSet != null)
+                set.addAll(sentSet);
 
             return set;
         }finally { lock.unlock(); }
@@ -131,5 +120,74 @@ public class FloodControl {
         }
 
         return currentIndex;
+    }
+
+
+    public static class FloodInfo{
+        public String server;
+        public int jumps;
+        public long timestamp;
+        public List<String> route;
+
+        public FloodInfo(String server, Integer jumps, Long timestamp, List<String> route) {
+            this.server = server;
+            this.jumps = jumps;
+            this.timestamp = timestamp;
+            this.route = route;
+        }
+
+        public byte[] serialize() throws IOException {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectOutputStream out = new ObjectOutputStream(baos);
+
+            //Serialize server identification
+            out.write(InetAddress.getByName(server).getAddress());
+
+            //Serialize nr of jumps and timestamp
+            out.writeInt(jumps);
+            out.writeLong(timestamp);
+
+            //Serialize route
+            for(String routeNode : route){
+                try {
+                    out.write(InetAddress.getByName(routeNode).getAddress());
+                } catch (UnknownHostException ignored) {}
+            }
+
+            out.flush();
+            byte[] byteArray = baos.toByteArray();
+            out.close();
+            baos.close();
+
+            return byteArray;
+        }
+
+        public static FloodInfo deserialize(byte[] data) throws IOException {
+            ByteArrayInputStream bais = new ByteArrayInputStream(data);
+            ObjectInputStream ois = new ObjectInputStream(bais);
+
+            String server = InetAddress.getByAddress(ois.readNBytes(4)).getHostAddress();
+            int jumps = ois.readInt();
+            long timestamp = ois.readLong();
+
+            List<String> route = new ArrayList<>();
+            int i = 0;
+
+            boolean eof = false;
+            while (!eof) {
+                try {
+                    byte[] addrbytes = ois.readNBytes(4);
+                    if(addrbytes.length != 4)
+                        eof = true;
+                    else
+                        route.add(InetAddress.getByAddress(addrbytes).getHostAddress());
+                }
+                catch(EOFException eofe){ eof = true; }
+            }
+
+            ois.close();
+            bais.close();
+            return new FloodInfo(server, jumps, timestamp, route);
+        }
     }
 }

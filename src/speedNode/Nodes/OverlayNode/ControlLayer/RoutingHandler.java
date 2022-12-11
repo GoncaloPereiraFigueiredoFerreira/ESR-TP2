@@ -172,6 +172,10 @@ public class RoutingHandler implements Runnable {
                 sendActivateRouteResponse(true);
                 System.out.println("Desativando rota anterior : " + prevProvIP);
                 deactivateRoute(prevProvIP, null);
+
+                //Update previous provider IP to the current active route
+                var activeRoute = routingTable.getActiveRoute();
+                if(activeRoute != null) prevProvIP = activeRoute.snd;
             }
             else {
                 activateBestRouteActive = false;

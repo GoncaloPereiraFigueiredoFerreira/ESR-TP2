@@ -138,6 +138,7 @@ public class Serialize {
             list.add(InetAddress.getByAddress(bais.readNBytes(4)).getHostAddress());
             i+=4;
         }
+        bais.close();
         return list;
     }
 

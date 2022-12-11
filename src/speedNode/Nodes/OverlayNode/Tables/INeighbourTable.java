@@ -129,7 +129,7 @@ public interface INeighbourTable {
     void writeLock();
 
 
-    List<String> getAllNeighbourInterfaces();
+    boolean anyNeighbourUsesInterfaceIP(String interfaceIP);
     /**
      * Unlocks write locks.
      */
