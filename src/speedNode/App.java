@@ -2,7 +2,6 @@ package speedNode;
 
 import speedNode.Nodes.Bootstrap.Bootstrap;
 import speedNode.Nodes.OverlayNode.OverlayNode;
-import speedNode.Nodes.Server.TestServer;
 
 import java.util.*;
 
@@ -48,13 +47,6 @@ public class App
             new Thread(() -> OverlayNode.launch(modes.get("--node"))).start();
             anyValidArguments = true;
         }
-
-        if(modes.containsKey("--server")){
-            System.out.println("server: " + modes.get("--server"));
-            new Thread(() -> TestServer.launch(modes.get("--server"))).start();
-            anyValidArguments = true;
-        }
-
 
         if(!anyValidArguments)
             System.out.println("Invalid program!\n" + listPrograms());
