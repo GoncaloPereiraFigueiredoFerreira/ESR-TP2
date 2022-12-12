@@ -671,15 +671,14 @@ public class ControlWorker implements Runnable{
             //if there are other routes then try to activate them
             //else sends to the neighbours wantingTheStream to delete the route and try it themselves
         var activeRoute = this.routingTable.getActiveRoute();
-
         boolean wasActiveRoute = activeRoute != null && activeRoute.snd.equals(neighbourName);
-        if(wasActiveRoute){
+        this.neighbourTable.updateWantsStream(neighbourName,false);
+        
+        if(wasActiveRoute)
             recoverRoute();
-        }
         else{
             this.routingTable.removeRoutes(neighbourName);
             //If neighbour was the only one wanting the stream, cancels the stream
-            this.neighbourTable.updateWantsStream(neighbourName,false);
             if(this.neighbourTable.getNeighboursWantingStream().size()==0)
                 deactivateRoute(neighbourName);
         }
