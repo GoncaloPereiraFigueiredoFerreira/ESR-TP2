@@ -96,7 +96,7 @@ public class StreamClient {
 
         //init para a parte do cliente
         //--------------------------
-        cTimer = new Timer(20, new clientTimerListener());
+        cTimer = new Timer(42, new clientTimerListener());
         cTimer.setInitialDelay(0);
         cTimer.setCoalesce(true);
         cBuf = new byte[15000]; //allocate enough memory for the buffer used to receive data from the server
@@ -179,17 +179,22 @@ public class StreamClient {
             rcvdp = new DatagramPacket(cBuf, cBuf.length);
 
             try{
+
                 //receive the DP from the socket:
+                Long before = System.currentTimeMillis();
                 RTPsocket.receive(rcvdp);
+                Long after = System.currentTimeMillis();
+                System.out.println("Waited: " + (after-before) + "ms for the package reception");
 
                 //create an RTPpacket object from the DP
                 RTPpacket rtp_packet = new RTPpacket(rcvdp.getData(), rcvdp.getLength());
 
                 //print important header fields of the RTP packet received:
-                System.out.println("Got RTP packet with SeqNum # "+rtp_packet.getsequencenumber()+" TimeStamp "+rtp_packet.gettimestamp()+" ms, of type "+rtp_packet.getpayloadtype());
+                //System.out.println("Got RTP packet with SeqNum # "+rtp_packet.getsequencenumber()+" TimeStamp "+rtp_packet.gettimestamp()+" ms, of type "+rtp_packet.getpayloadtype());
+
 
                 //print header bitstream:
-                rtp_packet.printheader();
+                //rtp_packet.printheader();
 
                 //get the payload bitstream from the RTPpacket object
                 int payload_length = rtp_packet.getpayload_length();
