@@ -244,133 +244,6 @@ public class ControlWorker implements Runnable{
             connectToNeighbour(neighbour);
     }
 
-    /*
-    private void connectToNeighbourAntigo(String neighbour) throws IOException{
-        Socket s = null;
-        try {
-            //Creating socket to contact neighbour
-            logger.info("Creating socket to contact neighbour " + neighbour + "...");
-            s = new Socket(neighbour, ssPort);
-            s.setSoTimeout(timeToWaitForClient); //Sets the waiting time till the connection is established, after which the connection is dropped
-            TaggedConnection tc = new TaggedConnection(s);
-            logger.info("Created socket to contact neighbour " + neighbour + ".");
-
-            //Requesting neighbour to establish connection
-            logger.info("Requesting neighbour " + neighbour + " to establish connection.");
-            logger.info("Sending the interfaces ---------------> " + this.ipv4Interfaces);
-            tc.send(0, Tags.REQUEST_NEIGHBOUR_CONNECTION, Serialize.serializeListOfStrings(this.ipv4Interfaces)); //Send connection request //TODO: Adicionar a lista dos ips
-            Frame frame = tc.receive(); //Waits for answer
-            logger.info("Received answer from neighbour " + neighbour);
-
-            //If the tag is not equal to RESPONSE_NEIGHBOUR_CONNECTION then the connection is refused
-            if(frame.getTag() != Tags.RESPONSE_NEIGHBOUR_CONNECTION){
-                logger.info("Expected frame with tag" + Tags.RESPONSE_NEIGHBOUR_CONNECTION + " from neighbour " + neighbour);
-                s.close();
-                return;
-            }
-            List<String> interfaceIpsNeigh;
-            //Boolean == True -> Neighbour added the connection to his map
-            //Otherwise -> Neighbour did not add connection to his map
-            if((interfaceIpsNeigh = Serialize.deserializeListOfStrings(frame.getData())).size()>0){
-                logger.info("Neighbour " + neighbour + " accepted connection.");
-
-                try{
-                    neighbourTable.writeLock();
-
-                    String interfaceIP = chooseInterface(interfaceIpsNeigh);
-                    System.out.println("\n\n ----->MINHA INTERFACE: " + tc.getSocket().getLocalAddress().getHostAddress() + " | NEIGHBOUR: " + neighbour +
-                            " | INTERFACE NEIGHBOUR: " + interfaceIP + "\n\n\n" );
-                    neighbourTable.setNeighbourIP(neighbour,interfaceIP);
-
-                    //Only adds the connection if there isn't already a connection
-                    //Or, in case there is one active, if the neighbours IP is lexically superior
-                    ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbour);
-                    if(ch == null || neighbour.compareTo(bindAddress) > 0)
-                        initiateNeighbourConnectionReceiver(neighbour, tc);
-                    else {
-                        s.close();
-                        return;
-                    }
-                }finally{neighbourTable.writeUnlock();}
-            }
-            else s.close();
-        }
-        catch (UnknownHostException ignored){
-            logger.warning("Unknown Host Exception for neighbour " + neighbour);
-        }
-        catch (ConnectException ce){
-            logger.warning("Could not connect to neighbour " + neighbour);
-        }
-        catch (EOFException eofe){
-            logger.warning("EOF Exception thrown when trying to read response from " + neighbour);
-            if(s != null && !s.isClosed()) s.close();
-        }
-    }
-    */
-
-
-    //private String chooseInterface(List<String> neighbourInterfaces){
-    //    String interfaceIP = "";
-    //    for (String neighbourIP :neighbourInterfaces){
-    //        for (String localIP : this.ipv4Interfaces){
-    //            try {
-    //                byte[] tempNIP = Arrays.copyOfRange( InetAddress.getByName(neighbourIP).getAddress(),0,3);
-    //                byte[] tempLIP = Arrays.copyOfRange( InetAddress.getByName(localIP).getAddress(),0,3);
-    //                if (Arrays.equals(tempNIP,tempLIP)) {
-    //                    interfaceIP = neighbourIP;
-    //                    break;
-    //                }
-    //            } catch (UnknownHostException e) {
-    //                e.printStackTrace();
-    //            }
-    //        }
-    //        if (!Objects.equals(interfaceIP, "")) break;
-    //    }
-    //    return interfaceIP;
-    //}
-
-    /*
-    private Tuple<String,String> chooseInterface(List<String> neighbourInterfaces){
-        String interfaceIP = null;
-        for (String neighbourIP :neighbourInterfaces){
-            for (String localIP : this.ipv4Interfaces){
-                try {
-                    byte[] tempNIP = Arrays.copyOfRange( InetAddress.getByName(neighbourIP).getAddress(),0,3);
-                    byte[] tempLIP = Arrays.copyOfRange( InetAddress.getByName(localIP).getAddress(),0,3);
-                    if (Arrays.equals(tempNIP,tempLIP)) {
-                        return new Tuple<>(localIP, neighbourIP);
-                    }
-                } catch (UnknownHostException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        return null;
-    }*/
-
-
-
-    /**
-     * Returns collection of ipv4 addresses associated with the devices interfaces. Loopback excluded.
-     * @return collection of ipv4 addresses associated with the devices interfaces. Loopback excluded.
-     * @throws SocketException
-     */
-    public static Collection<String> getNetworkInterfacesIPv4s() throws SocketException{
-        Collection<String> ipv4s = new HashSet<>();
-        Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
-        for (NetworkInterface netint : Collections.list(nets)) {
-            Enumeration<InetAddress> inetAddresses = netint.getInetAddresses();
-            for(InetAddress inetAddress : Collections.list(inetAddresses)){
-                if(inetAddress instanceof Inet4Address){
-                    String ipv4 = inetAddress.getHostAddress();
-                    if(!ipv4.equals("127.0.0.1"))
-                        ipv4s.add(ipv4);
-                }
-            }
-        }
-        return ipv4s;
-    }
-
     /* ****** Attend New Connections ****** */
 
     private void startThreadToAttendNewConnections(){
@@ -666,6 +539,22 @@ public class ControlWorker implements Runnable{
         routingHandler.waitForRouteUpdate();
     }
 
+    private void deactivateRoute(String neighbourName){
+        if(routingHandler == null)
+            return;
+
+        Frame frame = new Frame(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
+        routingHandler.pushRoutingFrame(neighbourName, frame);
+    }
+
+    private void recoverRoute(){
+        if(routingHandler == null)
+            return;
+
+        Frame frame = new Frame(0, Tags.RECOVER_ROUTE, new byte[]{});
+        routingHandler.pushRoutingFrame(null, frame);
+    }
+
     /* ****** Flood ****** */
 
     /* *** PAYLOAD ***
@@ -764,6 +653,32 @@ public class ControlWorker implements Runnable{
         }
     }
 
+    /**
+     * handles the shutoff of the given neighbour
+     * @param neighbourName Name of the neighbour that closed
+     */
+    private void handleCloseConnection(String neighbourName){
+        ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbourName);
+        ch.close();
+
+        // If neighbour was a provider
+            //delete neighbour routes
+            //if there are other routes then try to activate them
+            //else sends to the neighbours wantingTheStream to delete the route and try it themselves
+        var activeRoute = this.routingTable.getActiveRoute();
+        boolean wasActiveRoute = activeRoute != null && activeRoute.snd.equals(neighbourName);
+        this.neighbourTable.updateWantsStream(neighbourName,false);
+        
+        if(wasActiveRoute)
+            recoverRoute();
+        else{
+            this.routingTable.removeRoutes(neighbourName);
+            //If neighbour was the only one wanting the stream, cancels the stream
+            if(this.neighbourTable.getNeighboursWantingStream().size()==0)
+                deactivateRoute(neighbourName);
+        }
+    }
+
     /* ****** Handle Frames Received ****** */
     private void handleFrame(String neighbourName, Frame frame) {
         if(frame == null)
@@ -771,27 +686,12 @@ public class ControlWorker implements Runnable{
         try {
             switch (frame.getTag()){
                 case Tags.FLOOD -> handleFloodFrame(neighbourName, frame);
+                case Tags.CLOSE_CONNECTION ->  handleCloseConnection(neighbourName);
                 default -> routingHandler.pushRoutingFrame(neighbourName, frame);
             }
 
         }catch (Exception e){
             e.printStackTrace();
-        }
-    }
-
-    private void handleActivateRoute(String ip) throws IOException{
-        this.neighbourTable.updateWantsStream(ip,true);
-        activateBestRoute();
-    }
-
-    private void handleDeactivateRoute(String ip) throws IOException{
-        this.neighbourTable.updateWantsStream(ip,false);
-        if(this.neighbourTable.getNeighboursWantingStream().size() == 0){
-            String oldProvidingIP = routingTable.getActiveRoute().snd;
-            ConnectionHandler ch = neighbourTable.getConnectionHandler(oldProvidingIP);
-
-            if(ch != null && ch.isRunning())
-                ch.getTaggedConnection().send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
         }
     }
 

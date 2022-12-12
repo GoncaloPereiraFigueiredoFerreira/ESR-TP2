@@ -113,6 +113,7 @@ public class ConnectionHandler implements Runnable{
             case Tags.CLOSE_CONNECTION -> {
                 logger.info(neighbour + " asked to close connection!");
                 keepRunning = false;
+                framesInputQueue.pushElem(new Tuple<>(neighbour, new Frame(0,Tags.CLOSE_CONNECTION,new byte[]{})));
             }
             //Inserts frame in queue
             default -> {

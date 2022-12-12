@@ -80,4 +80,6 @@ public interface IRoutingTable {
     boolean checkDelay();
 
     Tuple<String, String> activateBestRoute(Set<String> excluded);
+
+    void removeRoutes(String neighbourname);
 }

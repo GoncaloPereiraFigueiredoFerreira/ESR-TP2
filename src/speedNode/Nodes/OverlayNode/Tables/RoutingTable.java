@@ -354,9 +354,26 @@ public class RoutingTable implements IRoutingTable{
             delay = false; // quando a thread sair o delay "fica resolvido"
             reentrantLock.unlock();
         }
+
     }
 
-
-
+    public void removeRoutes(String neighbourName){
+        try{
+            this.readWriteLockProviders.writeLock().lock();
+            this.readWriteLockMetrics.writeLock().lock();
+            this.readWriteLockActive.writeLock().lock();
+            for (Tuple<String,String> key : this.metricsTable.keySet()){
+                if(key.snd.equals(neighbourName)) this.metricsTable.remove(key);
+            }
+            for (Tuple<String,String> key : this.activeRoute.keySet()) {
+                if(key.snd.equals(neighbourName)) this.activeRoute.remove(key);
+            }
+            this.providers.remove(neighbourName);
+        }finally {
+            this.readWriteLockProviders.writeLock().unlock();
+            this.readWriteLockMetrics.writeLock().unlock();
+            this.readWriteLockActive.writeLock().unlock();
+        }
+    }
 
 }

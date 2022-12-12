@@ -21,4 +21,5 @@ public class Tags {
     public final static int CLOSE_CONNECTION = 16;
     public final static int CLIENT_CLOSE_CONNECTION = 17;
     public final static int START_PERMISSION = 18;
+    public final static int RECOVER_ROUTE = 19;
 }
