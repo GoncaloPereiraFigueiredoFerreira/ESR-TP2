@@ -273,6 +273,47 @@ public class RoutingTable implements IRoutingTable{
     }
 
     @Override
+    public boolean updateMetricsAndCheckDelay(String serverIp, String provider, int jumps, long newTime) {
+        Tuple<String, String> temp = new Tuple<>(serverIp, provider);
+        try {
+            readWriteLockMetrics.writeLock().lock();
+            if (!this.metricsTable.containsKey(temp)) return false;
+            else{
+                var metrics = this.metricsTable.get(new Tuple<>(serverIp, provider));
+
+                var diff = newTime - metrics.snd;
+                var margin = metrics.snd * 0.15;
+
+                //TODO - criar funcao para calcular margem
+                if (diff > margin && newTime > 100 * 1000000){
+                    System.out.println("ROUTING TABLE: DELAY DETETADO");
+                    System.out.println("DELAYED TIME: "+ newTime /1000 );
+                    System.out.println("RECORDED TIME: "+ metrics.snd/1000);
+                    Tuple<Integer,Long> temp2 = new Tuple<>(jumps,newTime);
+                    this.metricsTable.put(temp,temp2);
+                    return true;
+                }
+                else if(diff < -margin)  {
+                    Tuple<Integer,Long> temp2 = new Tuple<>(jumps,newTime);
+                    this.metricsTable.put(temp,temp2);
+                }
+                return false;
+            }
+
+        }finally {
+            readWriteLockMetrics.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public void signalDelay(){
+        try{
+            reentrantLock.lock();
+            this.delay = true;
+        }finally { reentrantLock.unlock(); }
+    }
+
+    @Override
     public boolean verifyDelay(String serverIP, String provider,int jumps ,long newTime) {
         // Fazer conta para detetar delay
         // se foi detetado signalAll
@@ -282,7 +323,8 @@ public class RoutingTable implements IRoutingTable{
 
             var metrics = this.metricsTable.get(new Tuple<>(serverIP, provider));
             //System.out.println("New time: " + newTime/1000 + " | Oldtime: "  + metrics.snd/1000 );
-            if (newTime - metrics.snd >  metrics.snd && newTime > 200 * 1000 * 1000){
+            if (newTime - metrics.snd >  metrics.snd &&
+                newTime > 200 * 1000 * 1000){
                 System.out.println("ROUTING TABLE: DELAY DETETADO");
                 System.out.println("DELAYED TIME: "+ newTime /1000 );
                 System.out.println("RECORDED TIME: "+ metrics.snd/1000) ;

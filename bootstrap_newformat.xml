@@ -1,0 +1,32 @@
+<overlay>
+	<node name="BS">
+		<interface ip="10.0.0.10"/>
+		<neighbour name="O1"/>
+	</node>	
+	<node name="O1">
+		<interface ip="10.0.0.1"/>
+		<interface ip="10.0.1.1"/>
+		<interface ip="10.0.2.2"/>
+		<neighbour name="BS"/>
+		<neighbour name="O2"/>
+		<neighbour name="O3"/>
+	</node>
+	<node name="O2">
+		<interface ip="10.0.1.2"/>
+		<interface ip="10.0.5.2"/>
+		<neighbour name="O1"/>
+		<neighbour name="O3"/>
+	</node>	
+	<node name="O3">
+		<interface ip="10.0.2.1"/>
+		<interface ip="10.0.3.1"/>
+		<interface ip="10.0.5.1"/>
+		<neighbour name="O1"/>
+		<neighbour name="O2"/>
+		<neighbour name="O4"/>
+	</node>
+	<node name="O4">
+		<interface ip="10.0.3.10"/>
+		<neighbour name="O3"/>
+	</node>		
+</overlay>

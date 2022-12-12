@@ -105,12 +105,11 @@ public class TransmissionWorker implements Runnable{
                 long currTime = System.nanoTime();
                 String neighbourIP = oldPacket.getNeighbourIP();
 
-                if (this.clientTable.getAllClients().size() >0){
-                    //verificar se existe delay, e alertar na routing table se sim
-                    this.routingTable.verifyDelay(serverIP,neighbourName,jumps+1,currTime-initTimeSt);
-                }
+                boolean detectedDelay = this.routingTable.updateMetricsAndCheckDelay(serverIP, neighbourName, jumps + 1, currTime - initTimeSt);
 
-                this.routingTable.updateMetrics(serverIP,neighbourName,jumps+1,currTime-initTimeSt);
+                if(this.clientTable.getAllClients().size() > 0 && detectedDelay)
+                    this.routingTable.signalDelay();
+
                 // Update neighbour jump // Here we could detect a delay in the jump
                 this.neighbourTable.updateLastJumpTime(neighbourName,currTime - oldPacket.getLastJumpTimeSt());
 

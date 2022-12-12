@@ -37,6 +37,18 @@ public interface IRoutingTable {
     boolean updateMetrics(String ServerIp,String provider, int Jumps, long Time);
 
     /**
+     *
+     * @param ServerIp
+     * @param provider
+     * @param Jumps
+     * @param Time
+     * @return true if a delay was detected
+     */
+    boolean updateMetricsAndCheckDelay(String ServerIp, String provider, int Jumps, long Time);
+
+    void signalDelay();
+
+    /**
      * Updates the active state of a connection
      * @param ServerIp The ip for the streaming server
      * @param provider The ip of the neighbour node that transmits the stream
