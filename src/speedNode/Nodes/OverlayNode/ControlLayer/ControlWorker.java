@@ -1,9 +1,9 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
 import speedNode.Nodes.OverlayNode.TransmissionLayer.TransmissionWorker;
-import speedNode.Utilities.Logs.LoggingToFile;
 import speedNode.Utilities.*;
 import speedNode.Nodes.OverlayNode.Tables.*;
+import speedNode.Utilities.Logs.MyLogger;
 import speedNode.Utilities.TaggedConnection.Serialize;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
 
@@ -11,7 +11,6 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
-import java.util.logging.Logger;
 
 import speedNode.Utilities.TaggedConnection.Frame;
 import speedNode.Utilities.TaggedConnection.Tags;
@@ -19,7 +18,7 @@ import speedNode.Utilities.TaggedConnection.Tags;
 //TODO - verificar como Ã© a situacao de um nodo ser servidor e cliente
 public class ControlWorker implements Runnable{
     //Logger
-    private Logger logger;
+    private MyLogger logger;
 
     //Bootstrap info
     private final String bootstrapIP;
@@ -66,8 +65,7 @@ public class ControlWorker implements Runnable{
     public void run() {
         try{
             //Creates logger
-            String initialLogFileName = "OverlayNode" + UUID.randomUUID()  + ".txt";
-            this.logger = LoggingToFile.createLogger(initialLogFileName, "", true);
+            this.logger = MyLogger.createLogger(UUID.randomUUID().toString(), "---","", false);
             logger.info("Running...");
 
             //Starts the server socket, which is necessary to establish connections with neighbours
@@ -75,10 +73,6 @@ public class ControlWorker implements Runnable{
             logger.info("Server Socket created.");
             startThreadToAttendNewConnections();
             requestNeighboursAndConnect();
-
-            //TODO - tentar mudar o nome dentro do request neighbours and connect
-            //Changes log file name to something that allows a better identification
-            LoggingToFile.changeLogFile(logger, initialLogFileName, "", "Node" + nodeName + ".txt", "");
 
             //Starts transmission thread
             TransmissionWorker transmissionWorker = new TransmissionWorker(neighbourTable, routingTable, clientTable);
@@ -156,6 +150,7 @@ public class ControlWorker implements Runnable{
         //Triple for all the neighbours (neighbourName, local IP, neighbour IP)
         List<String> responseList = Serialize.deserializeListOfStrings(neighboursFrame.getData());
         nodeName = responseList.remove(0); // First element of the list corresponds to the name of the node
+        logger.changeLogNameAndDisplayName(nodeName, nodeName);
         logger.info("Bootstrap response to neighbours request: " + responseList);
 
         //Initial fill of neighbours' table
