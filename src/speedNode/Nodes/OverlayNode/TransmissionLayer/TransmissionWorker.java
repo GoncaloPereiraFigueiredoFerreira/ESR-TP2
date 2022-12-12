@@ -18,30 +18,14 @@ public class TransmissionWorker implements Runnable{
     private static final int PORT=50000;
     private static final int CLPORT = 25000;
     public static final int MAX_UDP_P_SIZE = 30000;
-    private final String bindAddr ;
     private final Set<Thread> threads = new HashSet<>();
 
-    public TransmissionWorker(INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
+    public TransmissionWorker(INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable) {
         this.clientTable = clientTable;
         this.routingTable = routingTable;
         this.neighbourTable = neighbourTable;
 
-        //TODO - GANSO POR FAVOR VE ISTOOOOOO! JA NAO DEVE SER PRECISO O "bindAddr"
-        try { this.bindAddr = getOneIPv4NetworkInterface(); System.out.println("BIND ADDRESS: " + bindAddr); }
-        catch (SocketException e) { throw new RuntimeException(e); }
-    }
 
-    public static String getOneIPv4NetworkInterface() throws SocketException{
-        Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
-        for (NetworkInterface netint : Collections.list(nets)) {
-            Enumeration<InetAddress> inetAddresses = netint.getInetAddresses();
-            for(InetAddress inetAddress : Collections.list(inetAddresses)){
-                if(inetAddress instanceof Inet4Address){
-                    return inetAddress.getHostAddress();
-                }
-            }
-        }
-        return null;
     }
 
     //TODO: Store all threads in a set, in order to shutdown gracefully
@@ -79,7 +63,7 @@ public class TransmissionWorker implements Runnable{
 
             // Awaits for a datagram to be put on the queue
             DatagramPacket input = inputQueue.popElem();
-
+            long init = System.nanoTime();
             /////// Start processing
 
             // Origin IP of the packet
@@ -93,7 +77,7 @@ public class TransmissionWorker implements Runnable{
             if (this.clientTable.getAllServers().contains(ip)) {
                 // Wraps the RTP package in a FTRapid one
                 long timestamp = System.nanoTime();
-                newPackage = new RapidFTProtocol(timestamp,timestamp, 0, input.getData(),ip,bindAddr);
+                newPackage = new RapidFTProtocol(timestamp,timestamp, 0, input.getData(),ip);
             }
             // Else if it comes from a neighbour
             else if ((neighbourName = this.neighbourTable.anyNeighbourUsesInterfaceIP(ip)) != null) {
@@ -103,7 +87,6 @@ public class TransmissionWorker implements Runnable{
                 int jumps = oldPacket.getJumps();
                 String serverIP = oldPacket.getServerIP();
                 long currTime = System.nanoTime();
-                String neighbourIP = oldPacket.getNeighbourIP();
 
                 boolean detectedDelay = this.routingTable.updateMetricsAndCheckDelay(serverIP, neighbourName, jumps + 1, currTime - initTimeSt);
 
@@ -113,10 +96,10 @@ public class TransmissionWorker implements Runnable{
                 // Update neighbour jump // Here we could detect a delay in the jump
                 this.neighbourTable.updateLastJumpTime(neighbourName,currTime - oldPacket.getLastJumpTimeSt());
 
-                newPackage = new RapidFTProtocol(initTimeSt,currTime,jumps+1, oldPacket.getPayload(),serverIP,bindAddr );
+                newPackage = new RapidFTProtocol(initTimeSt,currTime,jumps+1, oldPacket.getPayload(),serverIP);
+                currTime = System.nanoTime();
+                if (i%20==0) System.out.println("TRANSMISSION: Recebi um pacote de " + ip + " com delay de " + (float) (currTime-initTimeSt)/1000000 + "ms");
 
-                if (i%100==0) System.out.println("TRANSMISSION: Recebi um pacote de " + ip + " com delay de " + (currTime-initTimeSt)/1000);
-                i++;
             }
 
 
@@ -125,22 +108,22 @@ public class TransmissionWorker implements Runnable{
 
                 // Send to all neighbours that want the packet
                 List<String> nodeList = neighbourTable.getNeighboursWantingStream();
+                List<String> clientList = this.clientTable.getAllClients();
+                if (i%20==0) System.out.println("Transmition: Processei um pacote em " + (float) (System.nanoTime() - init)/1000000+ " ms");
+                i++;
 
                 for (String nodeName : nodeList) {
                     try {
                         String interfaceIP = this.neighbourTable.getNeighbourIP(nodeName);
                         DatagramPacket output = new DatagramPacket(newPackage.getData(), newPackage.getLength(), InetAddress.getByName(interfaceIP), PORT);
-                        // Coloca datagrama na queue para envio
                         outputQueue.pushElem(output);
                     } catch (UnknownHostException ignored) {}
                 }
 
                 // Send to all clients
-                List<String> clientList = this.clientTable.getAllClients();
                 for (String ipDest : clientList) {
                     try {
                         DatagramPacket output = new DatagramPacket(newPackage.getPayload(), newPackage.getPayloadLength(), InetAddress.getByName(ipDest), CLPORT);
-                        // Coloca datagrama na queue para envio
                         outputQueue.pushElem(output);
                     } catch (UnknownHostException ignored) {}
                 }

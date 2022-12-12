@@ -10,11 +10,10 @@ import java.util.Base64;
 
 
 public class RapidFTProtocol {
-    static int HEADER_SIZE = 56;
+    static int HEADER_SIZE = 52;
 
     static int PackType = 420;
     public InetAddress ServerIp;
-    public InetAddress NeighbourIp;
     public long InitialTimeSt =0;
     public long LastJumpTimeSt =0;
     public int Jumps=0;
@@ -30,9 +29,8 @@ public class RapidFTProtocol {
      * @param jumps Number of jumps taken by the packet
      * @param rtpPacket RTP packet contained in the payload
      * @param ServerIp IP of the content provider server
-     * @param NeighbourIP IP of the last speed node passed
      */
-    public RapidFTProtocol(long initialTimeStamp, long lastJumpTimeSt, int jumps, byte[] rtpPacket, String ServerIp, String NeighbourIP) {
+    public RapidFTProtocol(long initialTimeStamp, long lastJumpTimeSt, int jumps, byte[] rtpPacket, String ServerIp) {
         header = new byte[HEADER_SIZE];
         this.Jumps= jumps;
         this.LastJumpTimeSt = lastJumpTimeSt;
@@ -42,7 +40,6 @@ public class RapidFTProtocol {
 
         try{
             this.ServerIp = InetAddress.getByName(ServerIp);
-            this.NeighbourIp = InetAddress.getByName(NeighbourIP);
         }catch (UnknownHostException ignored){} // Nunca vai dar este erro
 
         try {
@@ -51,14 +48,12 @@ public class RapidFTProtocol {
             byte[] timeStJump = Serialize.serializeLong(this.LastJumpTimeSt);
             byte[] jumpB = Serialize.serializeInteger(this.Jumps);
             byte[] ip = this.ServerIp.getAddress();
-            byte[] neighIP = this.NeighbourIp.getAddress();
             int i =0;
             for (byte b : typeB) {header[i] = b;i++;}
             for (byte b : timeStIn) {header[i] = b;i++;}
             for (byte b : timeStJump) {header[i] = b;i++;}
             for (byte b : jumpB) {header[i] = b;i++;}
             for (byte b : ip) {header[i] = b;i++;}
-            for (byte b : neighIP){header[i] = b;i++;}
         } catch (IOException e) {
             //TODO
             e.printStackTrace();
@@ -76,7 +71,6 @@ public class RapidFTProtocol {
             this.LastJumpTimeSt = Serialize.deserializeLong(Arrays.copyOfRange(rapidFTP,24,38));
             this.Jumps = Serialize.deserializeInteger(Arrays.copyOfRange(rapidFTP,38,48));
             this.ServerIp = InetAddress.getByAddress(Arrays.copyOfRange(rapidFTP,48,52));
-            this.NeighbourIp =InetAddress.getByAddress(Arrays.copyOfRange(rapidFTP,52,56));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -125,9 +119,6 @@ public class RapidFTProtocol {
         return this.ServerIp.getHostAddress();
     }
 
-    public String getNeighbourIP(){
-        return this.NeighbourIp.getHostAddress();
-    }
 
     public long getInitialTimeSt() {
         return InitialTimeSt;

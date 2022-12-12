@@ -1,12 +1,7 @@
 package speedNode.Nodes.OverlayNode.Tables;
 
-import speedNode.Utilities.BoolWithLockCond;
 import speedNode.Utilities.Tuple;
-
-import java.sql.Time;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -32,6 +27,9 @@ public class RoutingTable implements IRoutingTable{
 
     private boolean delay = false;
     private final ReentrantLock reentrantLock = new ReentrantLock();
+
+    private int packetCounter=0; //Just a test
+    private int delayCounter=0;
 
     public RoutingTable(){
 
@@ -282,21 +280,29 @@ public class RoutingTable implements IRoutingTable{
                 var metrics = this.metricsTable.get(new Tuple<>(serverIp, provider));
 
                 var diff = newTime - metrics.snd;
-                var margin = metrics.snd * 0.15;
+                var margin = metrics.snd * 0.5;
+                packetCounter++;
 
                 //TODO - criar funcao para calcular margem
-                if (diff > margin && newTime > 100 * 1000000){
+                if (diff > margin && newTime> 50 * 1000 * 1000 && packetCounter> 15){
                     System.out.println("ROUTING TABLE: DELAY DETETADO");
                     System.out.println("DELAYED TIME: "+ newTime /1000 );
                     System.out.println("RECORDED TIME: "+ metrics.snd/1000);
-                    Tuple<Integer,Long> temp2 = new Tuple<>(jumps,newTime);
-                    this.metricsTable.put(temp,temp2);
-                    return true;
+                    delayCounter++;
+                    if (delayCounter > 5) {
+                        Tuple<Integer, Long> temp2 = new Tuple<>(jumps, newTime);
+                        this.metricsTable.put(temp, temp2);
+                        packetCounter = 0;
+                        delayCounter = 0;
+                        return true;
+                    }
+                    else return false;
                 }
                 else if(diff < -margin)  {
                     Tuple<Integer,Long> temp2 = new Tuple<>(jumps,newTime);
                     this.metricsTable.put(temp,temp2);
                 }
+                delayCounter=0;
                 return false;
             }
 
