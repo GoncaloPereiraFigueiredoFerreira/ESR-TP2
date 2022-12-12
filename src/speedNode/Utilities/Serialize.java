@@ -82,13 +82,35 @@ public class Serialize {
         return isServer;
     }
 
-    public static byte[] serializeListOfStrings (List<String> ips) throws IOException{
+    public static byte[] serializeString(String string) throws IOException{
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ObjectOutputStream out = new ObjectOutputStream(baos);
 
-        if(ips != null) {
-            out.writeInt(ips.size());
-            for (String ip : ips) {
+        out.writeUTF(string);
+        out.flush();
+
+        byte[] byteArray = baos.toByteArray();
+        out.close();
+        baos.close();
+        return byteArray;
+    }
+
+    public static String deserializeString(byte[] bytes) throws IOException{
+        ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
+        ObjectInputStream in = new ObjectInputStream(bais);
+        String string = in.readUTF();
+        in.close();
+        bais.close();
+        return string;
+    }
+
+    public static byte[] serializeListOfStrings (List<String> strings) throws IOException{
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream out = new ObjectOutputStream(baos);
+
+        if(strings != null) {
+            out.writeInt(strings.size());
+            for (String ip : strings) {
                 out.writeUTF(ip);
             }
         } else out.writeInt(0);
@@ -105,13 +127,13 @@ public class Serialize {
         ObjectInputStream in = new ObjectInputStream(bais);
 
         int tamanho =  in.readInt();
-        List<String> ips= new ArrayList<>();
+        List<String> strings = new ArrayList<>();
         for(int i=0;i<tamanho;i++)
-            ips.add(in.readUTF());
+            strings .add(in.readUTF());
 
         in.close();
         bais.close();
-        return ips;
+        return strings ;
     }
 
     public static byte[] serializeListOfIPs (List<String> ips) throws IOException{

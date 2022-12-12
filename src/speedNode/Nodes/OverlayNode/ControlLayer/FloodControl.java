@@ -148,11 +148,14 @@ public class FloodControl {
             out.writeLong(timestamp);
 
             //Serialize route
-            for(String routeNode : route){
-                try {
-                    out.write(InetAddress.getByName(routeNode).getAddress());
-                } catch (UnknownHostException ignored) {}
-            }
+            out.writeInt(route.size()); //writes number of nodes belonging to the route
+            for(String routeNode : route)
+                out.writeUTF(routeNode);
+            //for(String routeNode : route){
+            //    try {
+            //        out.write(InetAddress.getByName(routeNode).getAddress());
+            //    } catch (UnknownHostException ignored) {}
+            //}
 
             out.flush();
             byte[] byteArray = baos.toByteArray();
@@ -171,19 +174,22 @@ public class FloodControl {
             long timestamp = ois.readLong();
 
             List<String> route = new ArrayList<>();
-            int i = 0;
-
-            boolean eof = false;
-            while (!eof) {
-                try {
-                    byte[] addrbytes = ois.readNBytes(4);
-                    if(addrbytes.length != 4)
-                        eof = true;
-                    else
-                        route.add(InetAddress.getByAddress(addrbytes).getHostAddress());
-                }
-                catch(EOFException eofe){ eof = true; }
-            }
+            int nrOfNodes = ois.readInt();
+            for(int i = 0 ; i < nrOfNodes ; i++)
+                route.add(ois.readUTF());
+            //int i = 0;
+//
+            //boolean eof = false;
+            //while (!eof) {
+            //    try {
+            //        byte[] addrbytes = ois.readNBytes(4);
+            //        if(addrbytes.length != 4)
+            //            eof = true;
+            //        else
+            //            route.add(InetAddress.getByAddress(addrbytes).getHostAddress());
+            //    }
+            //    catch(EOFException eofe){ eof = true; }
+            //}
 
             ois.close();
             bais.close();

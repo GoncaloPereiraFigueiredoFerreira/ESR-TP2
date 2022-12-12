@@ -6,9 +6,7 @@ import speedNode.Nodes.OverlayNode.Tables.INeighbourTable;
 import speedNode.Nodes.OverlayNode.Tables.IRoutingTable;
 
 import java.net.*;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class TransmissionWorker implements Runnable{
     private final INeighbourTable neighbourTable;
@@ -23,11 +21,27 @@ public class TransmissionWorker implements Runnable{
     private final String bindAddr ;
     private final Set<Thread> threads = new HashSet<>();
 
-    public TransmissionWorker(String bindAddr, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
+    public TransmissionWorker(INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.clientTable = clientTable;
         this.routingTable = routingTable;
         this.neighbourTable = neighbourTable;
-        this.bindAddr = bindAddr;
+
+        //TODO - GANSO POR FAVOR VE ISTOOOOOO! JA NAO DEVE SER PRECISO O "bindAddr"
+        try { this.bindAddr = getOneIPv4NetworkInterface(); System.out.println("BIND ADDRESS: " + bindAddr); }
+        catch (SocketException e) { throw new RuntimeException(e); }
+    }
+
+    public static String getOneIPv4NetworkInterface() throws SocketException{
+        Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
+        for (NetworkInterface netint : Collections.list(nets)) {
+            Enumeration<InetAddress> inetAddresses = netint.getInetAddresses();
+            for(InetAddress inetAddress : Collections.list(inetAddresses)){
+                if(inetAddress instanceof Inet4Address){
+                    return inetAddress.getHostAddress();
+                }
+            }
+        }
+        return null;
     }
 
     //TODO: Store all threads in a set, in order to shutdown gracefully
@@ -70,6 +84,7 @@ public class TransmissionWorker implements Runnable{
 
             // Origin IP of the packet
             String ip = input.getAddress().getHostAddress();
+            String neighbourName;
 
             // Package that will be sent
             RapidFTProtocol newPackage = null;
@@ -79,10 +94,9 @@ public class TransmissionWorker implements Runnable{
                 // Wraps the RTP package in a FTRapid one
                 long timestamp = System.nanoTime();
                 newPackage = new RapidFTProtocol(timestamp,timestamp, 0, input.getData(),ip,bindAddr);
-
             }
             // Else if it comes from a neighbour
-            else if (this.neighbourTable.anyNeighbourUsesInterfaceIP(ip)) {
+            else if ((neighbourName = this.neighbourTable.anyNeighbourUsesInterfaceIP(ip)) != null) {
 
                 RapidFTProtocol oldPacket = new RapidFTProtocol(input.getData(), input.getLength());
                 long initTimeSt = oldPacket.getInitialTimeSt();
@@ -93,12 +107,12 @@ public class TransmissionWorker implements Runnable{
 
                 if (this.clientTable.getAllClients().size() >0){
                     //verificar se existe delay, e alertar na routing table se sim
-                    this.routingTable.verifyDelay(serverIP,neighbourIP,jumps+1,currTime-initTimeSt);
+                    this.routingTable.verifyDelay(serverIP,neighbourName,jumps+1,currTime-initTimeSt);
                 }
 
-                this.routingTable.updateMetrics(serverIP,neighbourIP,jumps+1,currTime-initTimeSt);
+                this.routingTable.updateMetrics(serverIP,neighbourName,jumps+1,currTime-initTimeSt);
                 // Update neighbour jump // Here we could detect a delay in the jump
-                this.neighbourTable.updateLastJumpTime(neighbourIP,currTime - oldPacket.getLastJumpTimeSt());
+                this.neighbourTable.updateLastJumpTime(neighbourName,currTime - oldPacket.getLastJumpTimeSt());
 
                 newPackage = new RapidFTProtocol(initTimeSt,currTime,jumps+1, oldPacket.getPayload(),serverIP,bindAddr );
 
@@ -113,9 +127,9 @@ public class TransmissionWorker implements Runnable{
                 // Send to all neighbours that want the packet
                 List<String> nodeList = neighbourTable.getNeighboursWantingStream();
 
-                for (String ipDest : nodeList) {
+                for (String nodeName : nodeList) {
                     try {
-                        String interfaceIP = this.neighbourTable.getInterfaceIp(ipDest);
+                        String interfaceIP = this.neighbourTable.getNeighbourIP(nodeName);
                         DatagramPacket output = new DatagramPacket(newPackage.getData(), newPackage.getLength(), InetAddress.getByName(interfaceIP), PORT);
                         // Coloca datagrama na queue para envio
                         outputQueue.pushElem(output);

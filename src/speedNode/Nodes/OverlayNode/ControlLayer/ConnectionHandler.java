@@ -14,7 +14,7 @@ import java.net.SocketTimeoutException;
 import java.util.logging.Logger;
 
 public class ConnectionHandler implements Runnable{
-    private final String neighbour;
+    private final String neighbour; //Neighbour name
     private TaggedConnection connection;
     private boolean keepRunning = true;
     private final ProtectedQueue<Tuple<String,Frame>> framesInputQueue;

@@ -2,40 +2,41 @@ package speedNode.Nodes.OverlayNode.Tables;
 
 import speedNode.Nodes.OverlayNode.ControlLayer.ConnectionHandler;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class NeighbourEntry {
 
-    private String ip;
+    private String name;
     private ConnectionHandler connectionHandler;
     private boolean wantsStream;
     private long timestamp;
-    private String interfaceIp;
+    private String localIP;
+    private String neighbourIP;
+
     /*
      * Columns:
      *
-     *     -> IP of the neighbour
+     *     -> Name of the neighbour
      *     -> Connection Handler (Can determine if the neighbour is connected)
      *     -> Flag: Does it want the stream
      *     -> Timestamp of last jump
-     *
+     *     -> Local IP used to contact the neighbour
+     *     -> Neighbour's IP
      */
 
-    public NeighbourEntry(String ip, ConnectionHandler connectionHandler, boolean wantsStream, long timestamp) {
-        this.ip = ip;
+    public NeighbourEntry(String name, ConnectionHandler connectionHandler, boolean wantsStream, long timestamp, String localIP, String neighbourIP) {
+        this.name = name;
         this.connectionHandler = connectionHandler;
         this.wantsStream = wantsStream;
         this.timestamp = timestamp;
-        this.interfaceIp = "";
+        this.localIP = localIP;
+        this.neighbourIP = neighbourIP;
     }
 
-    public String getIp() {
-        return ip;
+    public String getName() {
+        return name;
     }
 
-    public void setIp(String ip) {
-        this.ip = ip;
+    public void setName(String name) {
+        this.name = name;
     }
 
     public ConnectionHandler getConnectionHandler() {
@@ -66,18 +67,22 @@ public class NeighbourEntry {
         this.timestamp = timestamp;
     }
 
-    public String getInterfaceIP(){
-        return this.interfaceIp;
+    public String getLocalIP() { return localIP; }
+
+    public String getNeighbourIP(){
+        return this.neighbourIP;
     }
 
-    public void setInterfaceIp(String interfaceIp){
-        this.interfaceIp = interfaceIp;
+    public void setNeighbourIP(String neighbourIP){
+        this.neighbourIP = neighbourIP;
     }
+
+    public void setLocalIP(String localIP) { this.localIP = localIP; }
 
     @Override
     public String toString() {
         return "{" +
-                "ip='" + ip + '\'' +
+                "ip='" + name + '\'' +
                 ", wantsStream=" + wantsStream +
                 ", timestamp=" + timestamp +
                 '}';

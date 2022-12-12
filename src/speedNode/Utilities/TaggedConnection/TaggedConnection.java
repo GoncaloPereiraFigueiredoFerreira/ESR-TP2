@@ -1,7 +1,5 @@
 package speedNode.Utilities.TaggedConnection;
 
-import speedNode.Utilities.LoggingToFile;
-
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -17,8 +15,6 @@ public class TaggedConnection implements AutoCloseable {
     private final DataInputStream dis;
     private final ReentrantLock readLock = new ReentrantLock();
     private final ReentrantLock writeLock = new ReentrantLock();
-
-    private final static Logger logger = Logger.getLogger(UUID.randomUUID().toString());
 
     public TaggedConnection(Socket socket) throws IOException {
         this.socket = socket;
@@ -53,7 +49,6 @@ public class TaggedConnection implements AutoCloseable {
             dos.writeInt(data.length);
             dos.write(data);
             dos.flush();
-            logger.info("TAGGEDCONNECTION - [Sent] number: " + number + " | tag: " + tag);
         }finally {
             writeLock.unlock();
         }
@@ -76,7 +71,6 @@ public class TaggedConnection implements AutoCloseable {
             dataSize = dis.readInt();
             data     = new byte[dataSize];
             dis.readFully(data);
-            logger.info("TAGGEDCONNECTION - [Receive] number: " + number + " | tag: " + tag);
             return new Frame(number, tag, data);
         }finally {
             readLock.unlock();
@@ -91,8 +85,15 @@ public class TaggedConnection implements AutoCloseable {
         socket.shutdownOutput();
         socket.close();
     }
+    
+    public String getLocalIP(){
+        if(socket != null)
+            return socket.getLocalAddress().getHostAddress();
+        else 
+            return null;
+    }
 
-    public String getHost() {
+    public String getHostIP() {
         if(socket != null)
             return socket.getInetAddress().getHostAddress();
         else

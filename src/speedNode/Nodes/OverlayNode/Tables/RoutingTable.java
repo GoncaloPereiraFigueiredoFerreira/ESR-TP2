@@ -67,8 +67,8 @@ public class RoutingTable implements IRoutingTable{
     }
 
     @Override
-    public boolean updateMetrics(String ServerIp, String Provider, int Jumps, long Time) {
-        Tuple<String, String> temp = new Tuple<>(ServerIp, Provider);
+    public boolean updateMetrics(String ServerIp, String provider, int Jumps, long Time) {
+        Tuple<String, String> temp = new Tuple<>(ServerIp, provider);
         try {
             readWriteLockMetrics.writeLock().lock();
             if (!this.metricsTable.containsKey(temp)) return false;
@@ -273,14 +273,14 @@ public class RoutingTable implements IRoutingTable{
     }
 
     @Override
-    public boolean verifyDelay(String serverIP, String Provider,int jumps ,long newTime) {
+    public boolean verifyDelay(String serverIP, String provider,int jumps ,long newTime) {
         // Fazer conta para detetar delay
         // se foi detetado signalAll
         try{
             this.readWriteLockMetrics.writeLock().lock();
             reentrantLock.lock();
 
-            var metrics = this.metricsTable.get(new Tuple<>(serverIP,Provider));
+            var metrics = this.metricsTable.get(new Tuple<>(serverIP, provider));
             //System.out.println("New time: " + newTime/1000 + " | Oldtime: "  + metrics.snd/1000 );
             if (newTime - metrics.snd >  metrics.snd && newTime > 200 * 1000 * 1000){
                 System.out.println("ROUTING TABLE: DELAY DETETADO");

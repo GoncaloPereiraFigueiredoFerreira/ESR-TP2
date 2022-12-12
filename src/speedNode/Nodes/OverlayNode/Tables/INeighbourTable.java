@@ -18,20 +18,14 @@ public interface INeighbourTable {
 
 
     /**
-     * Adds a new neighbour to the neighbour list. The neighbour will be considered inactive and not connected.
+     * Adds a new neighbour to the neighbour list if he doesnt already exist. The neighbour will be considered inactive and not connected.
      *
-     * @param ip IP of the new neighbour
+     * @param neighbourName Name of the new neighbour
+     * @param localIP Local IP
+     * @param neighbourIP Neighbour's IP
      * @return Returns true if the neighbour was added to the list, and false otherwise
      */
-    boolean addNeighbour(String ip);
-
-    /**
-     * Adds a list of new neighbours to the neighbour table. The neighbours will be considered inactive and not connected.
-     *
-     * @param ip IP of the new neighbour
-     * @return Returns true if all neighbours were added to the list, or false otherwise
-     */
-    boolean addNeighbours(List<String> ip);
+    boolean addNeighbour(String neighbourName, String localIP, String neighbourIP);
 
     /**
      * Method to get the neighbours of the node
@@ -73,10 +67,11 @@ public interface INeighbourTable {
 
     /**
      * Returns the connection handler associated with the neighbour node.
-     * @param ip IP of neighbour
+     *
+     * @param neighbourName IP of neighbour
      * @return connection handler associated with the neighbour node.
      */
-    ConnectionHandler getConnectionHandler(String ip);
+    ConnectionHandler getConnectionHandler(String neighbourName);
 
     /**
      * Replaces the connection handler
@@ -106,10 +101,10 @@ public interface INeighbourTable {
     /**
      * Updates the jump time to a certain neighbour
      *
-     * @param ip           Ip of the neighbour
-     * @param newTimeStamp New time for the jump
+     * @param neighbourName Ip of the neighbour
+     * @param newTimeStamp  New time for the jump
      */
-    void updateLastJumpTime(String ip, long newTimeStamp);
+    void updateLastJumpTime(String neighbourName, long newTimeStamp);
 
     /**
      * Returns the time that it takes to jump from the neighbour to the current Node
@@ -119,9 +114,15 @@ public interface INeighbourTable {
      */
     long getLastJumpTime(String ip);
 
-    String getInterfaceIp(String ip);
+    String getNeighbourIP(String neighbourName);
 
-    void setInterfaceIp(String ip, String interfaceIp);
+    void setNeighbourIP(String neighbourName, String interfaceIp);
+
+    String getLocalIP(String neighbourName);
+
+    void setLocalIP(String neighbourName, String interfaceIp);
+
+    String getNeighbourNameByItsIP(String neighbourIP);
 
     /**
      * Locks write lock in case there is a need to hold the lock for multiple operations.
@@ -129,7 +130,7 @@ public interface INeighbourTable {
     void writeLock();
 
 
-    boolean anyNeighbourUsesInterfaceIP(String interfaceIP);
+    String anyNeighbourUsesInterfaceIP(String neighbourIP);
     /**
      * Unlocks write locks.
      */

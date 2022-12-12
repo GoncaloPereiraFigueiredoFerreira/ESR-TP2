@@ -41,45 +41,45 @@ public class BootstrapWorker implements Runnable{
 
             switch (frame.getTag()) {
                 case Tags.REQUEST_NEIGHBOURS_EXCHANGE:
-                    sendNeighbours(frame);
+                    handleRequestNeighbours(frame);
                     break;
 
                 case Tags.INFORM_READY_STATE:
-                    // Frame telling the bootstrap that the node is ready
-                    sharedInfo.addContactedNode(socket.getInetAddress().getHostAddress());
+                    handleRequestStartPermission();
                     break;
 
-                case Tags.FLOOD_PERMISSION_EXCHANGE:
-                    // Frame telling bootstrap that the node is a server
-                    sharedInfo.canStartFlood();
-                    connection.send(new Frame(0,Tags.FLOOD_PERMISSION_EXCHANGE,new byte[]{}));
+                //case Tags.FLOOD_PERMISSION_EXCHANGE:
+                //    // Frame telling bootstrap that the node is a server
+                //    sharedInfo.canStartFlood();
+                //    connection.send(new Frame(0,Tags.FLOOD_PERMISSION_EXCHANGE,new byte[]{}));
             }
 
             socket.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        } catch (IOException ignored) {}
     }
 
-    public void sendNeighbours(Frame frame) throws IOException {
-        //All ipv4 addresses of the contacting node
-        List<String> nodeAddresses = Serialize.deserializeListOfStrings(frame.getData());
+    private void handleRequestNeighbours(Frame frame) throws IOException {
+        //Finds the name of the node by its interface and
+        // gets the neighbours of the contacting node. For each neighbour, gets its name, the interface
+        // that the node should use to contact the neighbour and which
+        // interface of the neighbour should be used to establish the connection
+        List<String> responseList = sharedInfo.getNameAndNeighbours(socket.getInetAddress().getHostAddress());
 
-        //Gets the neighbours of the contacting node, and finds the interface that the node should use for the overlay
-        //The overlay address is the last element of the response list, following all the node neighbours
-        List<String> responseList = null;
-        for(String address : nodeAddresses){
-            responseList = sharedInfo.getNeighbours(address);
-            if(responseList != null) {
-                responseList.add(address);
-                break;
-            }
-        }
-
-        if(responseList == null)
-            responseList = new ArrayList<>();
+        //If responseList == null, then the node does not belong to the overlay
+        if(responseList == null) return;
 
         connection.send(0,Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(responseList));
         System.out.println("[Sent] tag: " + Tags.REQUEST_NEIGHBOURS_EXCHANGE + " | content: " + responseList);
+    }
+
+    private void handleRequestStartPermission() throws IOException {
+        boolean permission;
+        try {
+            // Frame telling the bootstrap that the node is ready
+            sharedInfo.addContactedNode(socket.getInetAddress().getHostAddress());
+            sharedInfo.waitForStartConditions();
+            permission = true;
+        }catch (InterruptedException ie){ permission = false; }
+        connection.send(0, Tags.START_PERMISSION, Serialize.serializeBoolean(permission));
     }
 }

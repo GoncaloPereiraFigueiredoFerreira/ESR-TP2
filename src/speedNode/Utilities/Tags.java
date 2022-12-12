@@ -20,4 +20,5 @@ public class Tags {
     public final static int RESPONSE_DEACTIVATE_ROUTE = 15;
     public final static int CLOSE_CONNECTION = 16;
     public final static int CLIENT_CLOSE_CONNECTION = 17;
+    public final static int START_PERMISSION = 18;
 }
