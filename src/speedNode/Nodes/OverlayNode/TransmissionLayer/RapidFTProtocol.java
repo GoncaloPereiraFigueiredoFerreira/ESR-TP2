@@ -1,8 +1,7 @@
 package speedNode.Nodes.OverlayNode.TransmissionLayer;
 
-import speedNode.Utilities.Serialize;
+import speedNode.Utilities.TaggedConnection.Serialize;
 
-import java.beans.Encoder;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;

@@ -1,4 +1,4 @@
-package speedNode.Utilities;
+package speedNode.Utilities.TaggedConnection;
 
 import java.io.*;
 import java.net.InetAddress;

@@ -1,4 +1,4 @@
-package speedNode.Utilities;
+package speedNode.Utilities.TaggedConnection;
 
 public class Tags {
     public final static int CONNECTION_CHECK = -1;
