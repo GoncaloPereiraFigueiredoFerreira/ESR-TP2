@@ -114,6 +114,16 @@ public class NeighbourTable implements INeighbourTable{
         }
     }
 
+    public boolean anyNeighbourWantsTheStream(){
+        try {
+            rwlock.readLock().lock();
+            for(NeighbourEntry entry: neighboursInfo.values())
+                if (entry.getWantsStream())
+                    return true;
+            return false;
+        }finally { rwlock.readLock().unlock(); }
+    }
+
     public ConnectionHandler updateConnectionHandler(String ip, ConnectionHandler ch) {
         try {
             rwlock.writeLock().lock();

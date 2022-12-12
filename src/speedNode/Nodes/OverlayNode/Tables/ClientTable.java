@@ -110,4 +110,15 @@ public class ClientTable implements IClientTable{
             readWriteLock.readLock().unlock();
         }
     }
+
+    @Override
+    public void printTable() {
+        try {
+            readWriteLock.readLock().lock();
+            System.out.println("clients= " + clientTable);
+            System.out.println("servers= " + serverTable);
+        }finally {
+            readWriteLock.readLock().unlock();
+        }
+    }
 }

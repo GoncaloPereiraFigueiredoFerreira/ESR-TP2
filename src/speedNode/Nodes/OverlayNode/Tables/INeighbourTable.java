@@ -129,6 +129,7 @@ public interface INeighbourTable {
      */
     void writeLock();
 
+    boolean anyNeighbourWantsTheStream();
 
     String anyNeighbourUsesInterfaceIP(String neighbourIP);
     /**

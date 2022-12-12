@@ -50,4 +50,5 @@ public interface IClientTable {
 
     boolean containsServer(String IP);
 
+    void printTable();
 }

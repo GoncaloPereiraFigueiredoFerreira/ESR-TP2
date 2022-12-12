@@ -139,16 +139,10 @@ public class ConnectionHandler implements Runnable{
         try { connection.close(); }
         catch (Exception ignored){}
 
-        removeRoutes();
+        framesInputQueue.pushElem(new Tuple<>(neighbour, new Frame(0,Tags.CLOSE_CONNECTION,new byte[]{})));
 
         logger.info("Closed receiver for " + neighbour + ".");
     }
-
-    //TODO - Eliminar rotas (se estiver ativa nao esquecer de escolher outra, se nao der, avisar para tras que é preciso escolher uma nova rota) e marcar vizinho como inativo
-    private void removeRoutes(){
-
-    }
-
 
     /* ***** Getters ***** */
 

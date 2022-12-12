@@ -68,6 +68,25 @@ public class ControlWorker implements Runnable{
             this.logger = MyLogger.createLogger(UUID.randomUUID().toString(), "---","", false);
             logger.info("Running...");
 
+            // ************** DEBUG
+                Thread tscan = new Thread(() -> {
+                    Scanner scanner = new Scanner(System.in);
+
+                    while (!Thread.interrupted()){
+                        String input = scanner.nextLine();
+                        switch (input) {
+                            case "r" -> {System.out.println("[" + nodeName + "]\n"); routingTable.printTables();}
+                            case "n" -> {System.out.println("[" + nodeName + "]\n"); neighbourTable.printTable();}
+                            case "c" -> {System.out.println("[" + nodeName + "]\n"); clientTable.printTable();}
+                        }
+                    }
+
+                });
+                threads.add(tscan);
+                tscan.start();
+
+            // *************»
+
             //Starts the server socket, which is necessary to establish connections with neighbours
             ss = new ServerSocket(ssPort);
             logger.info("Server Socket created.");
@@ -82,8 +101,6 @@ public class ControlWorker implements Runnable{
 
             startRoutingHandler();
             boolean permissionToStart = informReadyStateToBootstrapAndWaitForStartPermission();
-
-            System.out.println("************************\nconnected neighbours: " + neighbourTable.getConnectedNeighbours()+"\n**********************");
 
             if(permissionToStart) {
                 while (exception == null) {
@@ -117,7 +134,6 @@ public class ControlWorker implements Runnable{
         logger.info("Connecting to bootstrap...");
 
         //Connect to bootstrap
-        System.out.println("Bootstrap ip: " + bootstrapIP);
         Socket s = new Socket(bootstrapIP, bootstrapPort);
         s.setSoTimeout(timeToWaitForBootstrap); //Sets the waiting time for a packet after the connection is established, after which the connection is dropped
         TaggedConnection tc = new TaggedConnection(s);
@@ -340,7 +356,7 @@ public class ControlWorker implements Runnable{
 
     private void closeClientConnection(String contact) {
         clientTable.removeClient(contact);
-        routingHandler.pushRoutingFrame(null, new Frame(0, Tags.DEACTIVATE_ROUTE, new byte[]{}));
+        sendFrameToRoutingHandler(null, new Frame(0, Tags.DEACTIVATE_ROUTE, new byte[]{}));
     }
 
     private String identifyNeighbour(List<String> ipv4InterfacesNeighbour) {
@@ -353,12 +369,11 @@ public class ControlWorker implements Runnable{
     private void acceptNewClient(String client, TaggedConnection tc) throws IOException {
         activateBestRoute();
 
-        System.out.println("Melhor rota ativa!!");
         Tuple<String, String> route = routingTable.getActiveRoute();
         if(route != null)
-            System.out.println("Melhor rota: " +  route.fst +  "  " + route.snd);
+            System.out.println("Melhor rota (ACCEPT NEW CLIENT): " +  route.fst +  "  " + route.snd);
         else
-            System.out.println("Rota é nula!");
+            System.out.println("Rota é nula! (ACCEPT NEW CLIENT)");
 
         if(routingTable == null || routingTable.getActiveRoute() == null){
             tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
@@ -374,39 +389,8 @@ public class ControlWorker implements Runnable{
 
     private void acceptNewServer(String server, TaggedConnection tc){
         try{
-           // TaggedConnection bootstrapConnection = connectToBootstrap();
-
             //Acknowledge server
             tc.send(0, Tags.CONNECT_AS_SERVER_EXCHANGE, new byte[]{});
-
-            /*
-
-
-            //Request bootstrap for the permission to flood
-            bootstrapConnection.send(0, Tags.FLOOD_PERMISSION_EXCHANGE, new byte[]{});
-
-            //Receives response from bootstrap
-            Frame frame = bootstrapConnection.receive();
-
-            //Checks the tag
-            if(frame.getTag() == Tags.FLOOD_PERMISSION_EXCHANGE) {
-                //Registers server in clients table
-                this.clientTable.addNewServer(server);
-
-                //Starts a flood to inform the rest of the overlay's nodes of the existence of the new server
-                startFlood(server);
-
-                //Requests the stream (maybe it shouldn't be requested until, at least, a client requests it)
-                tc.send(0, Tags.REQUEST_STREAM, new byte[]{});
-                return;
-            }else {
-                // If the tag does not match "FLOOD_PERMISSION_EXCHANGE"
-                // or if the answer is not affirmative, cancels the stream
-                tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
-            }
-
-            bootstrapConnection.close();
-            */
 
             try{
                 //Awaits for the permission to start
@@ -457,48 +441,6 @@ public class ControlWorker implements Runnable{
         }finally { neighbourTable.writeUnlock(); }
     }
 
-    /* ****** Check Necessary Conditions to Start ****** */
-
-    //TODO - Recovery mode -> Tentar adquirir pelo menos uma rota
-    //Waits until the necessary conditions are fulfilled
-    private void waitsForStartConditionsToBeMet() throws InterruptedException {
-        boolean allReady = false;
-        var neighbours = neighbourTable.getNeighbours();
-        System.out.println("********** waitForStart neighbours: " + neighbours + "************");
-
-
-        int j = 0;
-        String notCon = null;
-
-        while (!allReady){
-            allReady = true;
-
-            for(int i = 0; i < neighbours.size() && allReady; i++)
-                if(!neighbourTable.isConnected(neighbours.get(i))) {
-                    allReady = false;
-                    notCon = neighbours.get(i);
-                }
-
-            //TODO - substituir por metodo da NeighboursTable que aguarda que todos os neighbours estejam prontos
-            if(!allReady) {
-                System.out.println(j + " - Waiting for " + notCon + " | ch: " + neighbourTable.getConnectionHandler(notCon));
-                Thread.sleep(2000);
-            }
-        }
-
-        System.out.println("********** all ready ************");
-    }
-
-    /* ****** Inform bootstrap that the node is ready ****** */
-
-    //private void informReadyStateToBootstrap() throws IOException {
-    //    //Informs bootstrap that the node is ready
-    //    TaggedConnection bootstrapConnection = connectToBootstrap();
-    //    bootstrapConnection.send(0, Tags.INFORM_READY_STATE, new byte[]{});
-    //    bootstrapConnection.close();
-    //    logger.info("Informed bootstrap of ready state.");
-    //}
-
     private boolean informReadyStateToBootstrapAndWaitForStartPermission() throws IOException {
         //Informs bootstrap that the node is ready
         TaggedConnection bootstrapConnection = connectToBootstrap();
@@ -534,7 +476,7 @@ public class ControlWorker implements Runnable{
             return;
 
         Frame frame = new Frame(0, Tags.ACTIVATE_ROUTE, new byte[]{});
-        routingHandler.pushRoutingFrame(null, frame);
+        sendFrameToRoutingHandler(null, frame);
 
         routingHandler.waitForRouteUpdate();
     }
@@ -544,15 +486,15 @@ public class ControlWorker implements Runnable{
             return;
 
         Frame frame = new Frame(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
-        routingHandler.pushRoutingFrame(neighbourName, frame);
+        sendFrameToRoutingHandler(neighbourName, frame);
     }
 
-    private void recoverRoute(){
+    private void recoverRoute(String neighbourName){
         if(routingHandler == null)
             return;
 
         Frame frame = new Frame(0, Tags.RECOVER_ROUTE, new byte[]{});
-        routingHandler.pushRoutingFrame(null, frame);
+        sendFrameToRoutingHandler(neighbourName, frame);
     }
 
     /* ****** Flood ****** */
@@ -611,8 +553,6 @@ public class ControlWorker implements Runnable{
                 routingTable.addServerPath(floodInfo.server, neighbourName, floodInfo.jumps, System.nanoTime() - floodInfo.timestamp, false);
             else
                 routingTable.updateMetrics(floodInfo.server, neighbourName, floodInfo.jumps, System.nanoTime() - floodInfo.timestamp);
-
-            routingTable.printTables(); //TODO - remover aqui
         }
     }
 
@@ -626,7 +566,6 @@ public class ControlWorker implements Runnable{
         for (String neighbour : neighbours) {
             try {
                 ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbour);
-                System.out.println("Connection HANDLER de " + neighbour + ": " + ch);
 
                 //Executes if the connection is active
                 if (ch != null && ch.isRunning()) {
@@ -658,9 +597,6 @@ public class ControlWorker implements Runnable{
      * @param neighbourName Name of the neighbour that closed
      */
     private void handleCloseConnection(String neighbourName){
-        ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbourName);
-        ch.close();
-
         // If neighbour was a provider
             //delete neighbour routes
             //if there are other routes then try to activate them
@@ -670,7 +606,7 @@ public class ControlWorker implements Runnable{
         this.neighbourTable.updateWantsStream(neighbourName,false);
         
         if(wasActiveRoute)
-            recoverRoute();
+            recoverRoute(neighbourName);
         else{
             this.routingTable.removeRoutes(neighbourName);
             //If neighbour was the only one wanting the stream, cancels the stream
@@ -687,12 +623,20 @@ public class ControlWorker implements Runnable{
             switch (frame.getTag()){
                 case Tags.FLOOD -> handleFloodFrame(neighbourName, frame);
                 case Tags.CLOSE_CONNECTION ->  handleCloseConnection(neighbourName);
-                default -> routingHandler.pushRoutingFrame(neighbourName, frame);
+                default -> {
+                    if(routingHandler != null)
+                        sendFrameToRoutingHandler(neighbourName, frame);
+                }
             }
 
         }catch (Exception e){
             e.printStackTrace();
         }
+    }
+
+    private void sendFrameToRoutingHandler(String neighbourName, Frame frame){
+        if(routingHandler != null)
+            routingHandler.pushRoutingFrame(neighbourName, frame);
     }
 
     /* ****** Close graciously ****** */
