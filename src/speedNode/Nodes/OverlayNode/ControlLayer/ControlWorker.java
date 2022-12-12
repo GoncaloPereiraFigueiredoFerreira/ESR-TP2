@@ -1,9 +1,10 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
 import speedNode.Nodes.OverlayNode.TransmissionLayer.TransmissionWorker;
-import speedNode.Utilities.LoggingToFile;
+import speedNode.Utilities.Logs.LoggingToFile;
 import speedNode.Utilities.*;
 import speedNode.Nodes.OverlayNode.Tables.*;
+import speedNode.Utilities.TaggedConnection.Serialize;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
 
 import java.io.EOFException;
@@ -13,6 +14,7 @@ import java.util.*;
 import java.util.logging.Logger;
 
 import speedNode.Utilities.TaggedConnection.Frame;
+import speedNode.Utilities.TaggedConnection.Tags;
 
 //TODO - verificar como Ã© a situacao de um nodo ser servidor e cliente
 public class ControlWorker implements Runnable{

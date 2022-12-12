@@ -1,5 +1,6 @@
 package speedNode.Utilities;
 
+import javax.sound.midi.Soundbank;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +31,7 @@ public class ProtectedQueue<X> {
     public X popElem(boolean await){
         try{
             rwLock.writeLock().lock();
+            //System.out.println("Length of the queue: " + this.length());
             while (await && this.length() == 0) {
                 // Fica bloqueado a espera de pacotes na queue
                 try { cond.await();}

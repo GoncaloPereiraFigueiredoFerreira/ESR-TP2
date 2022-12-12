@@ -1,14 +1,12 @@
 package speedNode.Nodes.Bootstrap;
 
-import speedNode.Utilities.Serialize;
+import speedNode.Utilities.TaggedConnection.Serialize;
 import speedNode.Utilities.TaggedConnection.Frame;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
-import speedNode.Utilities.Tags;
+import speedNode.Utilities.TaggedConnection.Tags;
 
 import java.io.IOException;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class BootstrapWorker implements Runnable{

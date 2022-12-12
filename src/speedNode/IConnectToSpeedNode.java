@@ -2,7 +2,7 @@ package speedNode;
 
 import speedNode.Utilities.TaggedConnection.Frame;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
-import speedNode.Utilities.Tags;
+import speedNode.Utilities.TaggedConnection.Tags;
 
 import java.io.IOException;
 import java.net.Socket;

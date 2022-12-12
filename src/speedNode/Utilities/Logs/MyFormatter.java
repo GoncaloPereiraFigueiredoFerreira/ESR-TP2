@@ -1,4 +1,4 @@
-package speedNode.Utilities;
+package speedNode.Utilities.Logs;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;

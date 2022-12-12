@@ -3,7 +3,7 @@ package speedNode.Nodes.OverlayNode.ControlLayer;
 import speedNode.Utilities.ProtectedQueue;
 import speedNode.Utilities.TaggedConnection.Frame;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
-import speedNode.Utilities.Tags;
+import speedNode.Utilities.TaggedConnection.Tags;
 import speedNode.Utilities.Tuple;
 
 import java.io.EOFException;
