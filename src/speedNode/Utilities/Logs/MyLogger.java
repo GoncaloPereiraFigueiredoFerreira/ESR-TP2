@@ -88,11 +88,6 @@ public class MyLogger extends Logger {
     public void changeLogNameAndDisplayName(String newLogName, String displayName) {
         var handlers = this.getHandlers();
 
-        MyFormatter formatter = new MyFormatter(displayName, showMethods);
-        ConsoleHandler consoleHandler = new ConsoleHandler();
-        consoleHandler.setFormatter(formatter);
-        this.addHandler(consoleHandler);
-
         //Removes previous console handler
         for(var handler : handlers){
             if(handler instanceof ConsoleHandler) {
@@ -102,6 +97,10 @@ public class MyLogger extends Logger {
             }
         }
 
+        MyFormatter formatter = new MyFormatter(displayName, showMethods);
+        ConsoleHandler consoleHandler = new ConsoleHandler();
+        consoleHandler.setFormatter(formatter);
+        
         //Adds new console handler
         this.addHandler(consoleHandler);
 
