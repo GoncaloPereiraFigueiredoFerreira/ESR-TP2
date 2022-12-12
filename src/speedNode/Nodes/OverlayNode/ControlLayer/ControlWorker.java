@@ -71,9 +71,10 @@ public class ControlWorker implements Runnable{
             //Starts the server socket, which is necessary to establish connections with neighbours
             ss = new ServerSocket(ssPort);
             logger.info("Server Socket created.");
-            requestNeighboursAndConnect();
             startThreadToAttendNewConnections();
+            requestNeighboursAndConnect();
 
+            //TODO - tentar mudar o nome dentro do request neighbours and connect
             //Changes log file name to something that allows a better identification
             LoggingToFile.changeLogFile(logger, initialLogFileName, "", "Node" + nodeName + ".txt", "");
 
@@ -157,11 +158,14 @@ public class ControlWorker implements Runnable{
 
         //Initial fill of neighbours' table
         for(int i = 0 ; i < responseList.size(); i += 3){
-            neighbourTable.addNeighbour(responseList.get(i),
-                                        responseList.get(i + 1),
-                                        responseList.get(i + 2));
-
-            connectToNeighbour(responseList.get(i));
+            //Tries to connect to the neighbour if he doesnt already exist
+            try {
+                neighbourTable.writeLock();
+                if (neighbourTable.addNeighbour(responseList.get(i),
+                        responseList.get(i + 1),
+                        responseList.get(i + 2)))
+                    connectToNeighbour(responseList.get(i));
+            }finally { neighbourTable.writeUnlock(); }
         }
 
 
@@ -404,7 +408,7 @@ public class ControlWorker implements Runnable{
                         System.out.println("Received frame from " + contactIP + " with tag " + frame.getTag()); //TODO - tirar print
 
                         switch (frame.getTag()) {
-                            case Tags.REQUEST_NEIGHBOUR_CONNECTION -> acceptNeighbourConnection(contactIP, tc,frame);
+                            case Tags.REQUEST_NEIGHBOUR_CONNECTION -> acceptNeighbourConnection(tc, frame);
                             case Tags.CONNECT_AS_CLIENT_EXCHANGE -> acceptNewClient(contactIP, tc);
                             case Tags.CONNECT_AS_SERVER_EXCHANGE -> acceptNewServer(contactIP, tc);
                             case Tags.CLIENT_CLOSE_CONNECTION -> closeClientConnection(contactIP);
@@ -432,7 +436,7 @@ public class ControlWorker implements Runnable{
         logger.info("Connection attendant closed.");
     }
 
-    private void acceptNeighbourConnection(String neighbourIP, TaggedConnection tc, Frame frame) throws IOException{
+    private void acceptNeighbourConnection(TaggedConnection tc, Frame frame) throws IOException{
         try {
             neighbourTable.writeLock();
             String neighbourName = Serialize.deserializeString(frame.getData());
@@ -457,7 +461,7 @@ public class ControlWorker implements Runnable{
                 var b = Serialize.serializeBoolean(true);
                 tc.send(0,Tags.RESPONSE_NEIGHBOUR_CONNECTION,b);
 
-                neighbourTable.addNeighbour(neighbourName, tc.getLocalIP() ,tc.getHostIP());
+                neighbourTable.addNeighbour(neighbourName, tc.getLocalIP(), tc.getHostIP());
                 initiateNeighbourConnectionReceiver(neighbourName, tc);
             }
         }

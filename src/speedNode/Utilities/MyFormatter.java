@@ -22,7 +22,7 @@ public class MyFormatter extends Formatter {
         builder.append(df.format(new Date(record.getMillis()))).append(" - ");
         //builder.append("[").append(record.getSourceClassName()).append(".");
         //builder.append(record.getSourceMethodName()).append("] - ");
-        builder.append("\n[").append(record.getLevel()).append("]");
+        builder.append("\n[").append(record.getLevel()).append("] ");
         builder.append(formatMessage(record));
         builder.append("\n\n");
         return builder.toString();

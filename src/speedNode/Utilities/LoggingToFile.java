@@ -18,17 +18,19 @@ public class LoggingToFile {
         FileHandler fh;
 
         try {
+            //SimpleFormatter formatter = new SimpleFormatter();
+            MyFormatter formatter = new MyFormatter("---");
+
             // This block configures the logger with handler and formatter
             fh = new FileHandler(pathToDirectory + logName);
             logger.addHandler(fh);
-
-            ConsoleHandler consoleHandler = new ConsoleHandler();
-            logger.addHandler(consoleHandler);
-
-            //SimpleFormatter formatter = new SimpleFormatter();
-            MyFormatter formatter = new MyFormatter("---");
             fh.setFormatter(formatter);
-            consoleHandler.setFormatter(formatter);
+
+            if(logToStdOut) {
+                ConsoleHandler consoleHandler = new ConsoleHandler();
+                logger.addHandler(consoleHandler);
+                consoleHandler.setFormatter(formatter);
+            }
         } catch (SecurityException e) {
             System.out.println("No permission to perform logging.");
         } catch (IOException ioe) {

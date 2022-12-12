@@ -13,7 +13,7 @@ public class BoolWithLockCond {
 
     public BoolWithLockCond(boolean value) { this.value = value; }
 
-    public boolean getValue(boolean value){
+    public boolean getValue(){
         try {
             lock.lock();
             return this.value;
@@ -35,6 +35,13 @@ public class BoolWithLockCond {
             this.value = value;
             if(currentValue != value)
                 cond.signalAll();
+        }finally { lock.unlock(); }
+    }
+
+    public void setValue(boolean value){
+        try {
+            lock.lock();
+            this.value = value;
         }finally { lock.unlock(); }
     }
 }

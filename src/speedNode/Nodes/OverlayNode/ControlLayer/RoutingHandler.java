@@ -67,6 +67,11 @@ public class RoutingHandler implements Runnable {
     private final Set<String> nodesAskedToActivateRoute = new HashSet<>();
     private final Set<String> requesters = new HashSet<>();
     private boolean activateBestRouteActive = false;
+
+    //Used when a change of route was requested and immediately after a deactivation of the active route,
+    // not giving enough time for the response of the first request to get back. This bool is used to ignore
+    // the response.
+    private boolean deactivatedRoute = false;
     private String prevProvName = null; //Previous provider name
 
     private void activateBestRoute(String neighbourName, Collection<String> contacted) {
@@ -86,6 +91,7 @@ public class RoutingHandler implements Runnable {
         if(!activateBestRouteActive){
             System.out.println("Trying to activate best route");
             activateBestRouteActive = true;
+            deactivatedRoute = false;
 
             //Not a server
             if(clientTable.getAllServers().size() == 0){
@@ -138,8 +144,21 @@ public class RoutingHandler implements Runnable {
         neighbourTable.printTable();
     }
 
+    //TODO - preciso arranjar forma de ignorar a resposta de activateRoute se a bool estiver ativa
+    // (talvez usar uma bool de deactivate e se ela estiver ativa ignora a resposta e reseta ambas as flags)
+    //                                     ||
+    //                                     ||
+    //                                     ||
+    //                                     ||
+    //                                     ||
+    //                                     ||
+    //                                     ||
+    //                                  +--||--+
+    //                                   \    /
+    //                                    \  /
+    //                                     \/
     private void deactivateRoute(String provider, String neighbourName){
-        //neighbourName == null -> the node itself
+        //neighbourName == null <=> the node itself
 
         //deactivate route if the neighbour is the only one wanting the stream
         if(neighbourName != null)
@@ -168,22 +187,24 @@ public class RoutingHandler implements Runnable {
         boolean response;
 
         try {
-            response = Serialize.deserializeBoolean(frame.getData());
-            System.out.println("Response a activate best route recebida: bool:" + response);
-            if(response) {
-                sendActivateRouteResponse(true);
-                System.out.println("Desativando rota anterior : " + prevProvName);
-                deactivateRoute(prevProvName, null);
-
-                //Update previous provider IP to the current active route
-                var activeRoute = routingTable.getActiveRoute();
-                if(activeRoute != null) prevProvName = activeRoute.snd;
-            }
+            if(deactivatedRoute) sendActivateRouteResponse(false);
             else {
-                activateBestRouteActive = false;
-                activateBestRoute(null, null);
-            }
+                response = Serialize.deserializeBoolean(frame.getData());
+                System.out.println("Response a activate best route recebida: bool:" + response);
 
+                if (response) {
+                    sendActivateRouteResponse(true);
+                    System.out.println("Desativando rota anterior : " + prevProvName);
+                    deactivateRoute(prevProvName, null);
+
+                    //Update previous provider IP to the current active route
+                    var activeRoute = routingTable.getActiveRoute();
+                    if (activeRoute != null) prevProvName = activeRoute.snd;
+                } else {
+                    activateBestRouteActive = false;
+                    activateBestRoute(null, null);
+                }
+            }
         }catch (IOException ioe){ return; }
     }
 
@@ -197,9 +218,11 @@ public class RoutingHandler implements Runnable {
     }
 
     private void handleDeactivateRoute(String neighbourName) {
+        deactivatedRoute = true;
         Tuple<String,String> activeRoute = routingTable.getActiveRoute();
         String provider = activeRoute != null ? activeRoute.snd : null;
         deactivateRoute(provider, neighbourName);
+        deactivateRoute(prevProvName, null); //Deactivates the previous route if it exists
     }
 
     private void sendActivateRouteRequest(String neighbourName, List<String> contacted) throws IOException {
