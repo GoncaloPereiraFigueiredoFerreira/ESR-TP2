@@ -37,6 +37,10 @@ public interface IClientTable {
      */
     List<String> getAllServers();
 
+    boolean hasClients();
+
+    boolean hasServers();
+
     /**
      * Removes a client from the client table
      * @param IP Ip of the to be removed client

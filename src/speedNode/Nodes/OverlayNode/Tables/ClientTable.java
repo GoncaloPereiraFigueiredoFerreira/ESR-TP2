@@ -92,4 +92,22 @@ public class ClientTable implements IClientTable{
             readWriteLock.readLock().unlock();
         }
     }
+
+    public boolean hasClients(){
+        try {
+            readWriteLock.readLock().lock();
+            return clientTable.size() != 0;
+        }finally {
+            readWriteLock.readLock().unlock();
+        }
+    }
+
+    public boolean hasServers(){
+        try {
+            readWriteLock.readLock().lock();
+            return serverTable.size() != 0;
+        }finally {
+            readWriteLock.readLock().unlock();
+        }
+    }
 }

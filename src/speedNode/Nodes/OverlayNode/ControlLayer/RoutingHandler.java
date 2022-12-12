@@ -55,7 +55,8 @@ public class RoutingHandler implements Runnable {
             switch (frame.getTag()) {
                 case Tags.ACTIVATE_ROUTE -> handleActivateRoute(neighbourName, frame);
                 case Tags.DEACTIVATE_ROUTE -> handleDeactivateRoute(neighbourName);
-                case Tags.RESPONSE_ACTIVATE_ROUTE -> handleActivateBestRouteResponse(frame);
+                case Tags.RESPONSE_ACTIVATE_ROUTE -> handleActivateBestRouteResponse(neighbourName, frame);
+                case Tags.RECOVER_ROUTE -> handleRecoverRoute(neighbourName);
             }
         }
     }
@@ -144,19 +145,6 @@ public class RoutingHandler implements Runnable {
         neighbourTable.printTable();
     }
 
-    //TODO - preciso arranjar forma de ignorar a resposta de activateRoute se a bool estiver ativa
-    // (talvez usar uma bool de deactivate e se ela estiver ativa ignora a resposta e reseta ambas as flags)
-    //                                     ||
-    //                                     ||
-    //                                     ||
-    //                                     ||
-    //                                     ||
-    //                                     ||
-    //                                     ||
-    //                                  +--||--+
-    //                                   \    /
-    //                                    \  /
-    //                                     \/
     private void deactivateRoute(String provider, String neighbourName){
         //neighbourName == null <=> the node itself
 
@@ -182,6 +170,58 @@ public class RoutingHandler implements Runnable {
         neighbourTable.printTable();
     }
 
+    private void handleActivateBestRouteResponse(String neighbourName, Frame frame){
+        if(frame == null) return;
+        boolean response;
+
+        try {
+            if(deactivatedRoute) sendActivateRouteResponse(false);
+            else {
+                Tuple<String, String> activeRoute = routingTable.getActiveRoute();
+                response = Serialize.deserializeBoolean(frame.getData());
+
+                //If the node is not connected to servers and some node sent a response, then it is ignored
+                // since a node attached to a server does not ask for a route
+                //Or if no route is active
+                //Or if the neighbour that sent the package does not belong to the current route
+                if(clientTable.hasServers()){
+                    if(neighbourName != null && response) {
+                        try {
+                            TaggedConnection tc = neighbourTable.getConnectionHandler(neighbourName).getTaggedConnection();
+                            tc.send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
+                        } catch (Exception ignored) {
+                        }
+                        sendActivateRouteResponse(true);
+                    }
+                    return;
+                } else if (activeRoute == null || !activeRoute.snd.equals(neighbourName)) {
+                    try {
+                        TaggedConnection tc = neighbourTable.getConnectionHandler(neighbourName).getTaggedConnection();
+                        tc.send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
+                    }catch (Exception ignored){}
+                    return;
+                }
+
+                System.out.println("Response a activate best route recebida: bool:" + response);
+
+                if (response) {
+                    sendActivateRouteResponse(true);
+                    System.out.println("Desativando rota anterior : " + prevProvName);
+                    deactivateRoute(prevProvName, null);
+
+                    //Update previous provider IP to the current active route
+                    prevProvName = activeRoute.snd;
+                } else {
+                    //remove routes from the node that sent the false response
+                    routingTable.removeRoutes(neighbourName);
+                    activateBestRouteActive = false;
+                    activateBestRoute(null, null);
+                }
+            }
+        }catch (IOException ioe){ return; }
+    }
+
+    /*
     private void handleActivateBestRouteResponse(Frame frame){
         if(frame == null) return;
         boolean response;
@@ -206,7 +246,7 @@ public class RoutingHandler implements Runnable {
                 }
             }
         }catch (IOException ioe){ return; }
-    }
+    }*/
 
     private void handleActivateRoute(String neighbourName,Frame frame){
         List<String> contacted = null;
@@ -271,6 +311,30 @@ public class RoutingHandler implements Runnable {
             routingTable.printTables(); //TODO - remover aqui
             neighbourTable.printTable();
         }
+    }
+
+    /**
+     * Recover Route should be called when the active route to the server is lost.
+     * @param neighbourName Provider of the stream. A neighbour that "died"
+     *                      or that could not recover a route to the server.
+     */
+    private void handleRecoverRoute(String neighbourName){
+
+        //Gets the current active route
+        Tuple<String, String> activeRoute = routingTable.getActiveRoute();
+
+        //remove routes from the neighbour
+        routingTable.removeRoutes(neighbourName);
+
+        //If the active route is no longer using the neighbour as provider,
+        // then there is nothing to do
+        if(activeRoute != null && !activeRoute.snd.equals(neighbourName))
+            return;
+
+        //TODO - activateBestRoute deve remover rotas de quem nao consegue ativar, e quando nao tiver rotas enviar recover route frame se nao conseguir ativar nenhuma rota
+
+        //Activates best route
+        activateBestRoute(null, null);
     }
 
 
