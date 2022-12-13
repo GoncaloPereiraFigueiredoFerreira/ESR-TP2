@@ -169,7 +169,7 @@ public class RoutingTable implements IRoutingTable{
     @Override
     public Tuple<String, String> activateBestRoute() {
         try{
-            this.readWriteLockMetrics.readLock().lock();
+            this.readWriteLockMetrics.writeLock().lock();
             float wiggleRoom = 0.15f; // todo - VALORIZAR MAIS OS SALTOS
             long score;
             long minScore = Long.MAX_VALUE;
@@ -186,11 +186,11 @@ public class RoutingTable implements IRoutingTable{
             }
 
             if(bestRoute != null && activateRoute(bestRoute.fst,bestRoute.snd))
-                return bestRoute;
+                return bestRoute.clone();
             else
                 return null;
         }finally {
-            this.readWriteLockMetrics.readLock().unlock();
+            this.readWriteLockMetrics.writeLock().unlock();
         }
     }
 
@@ -198,7 +198,7 @@ public class RoutingTable implements IRoutingTable{
 
     public Tuple<String, String> activateBestRoute(Set<String> excluded) {
         try{
-            this.readWriteLockMetrics.readLock().lock();
+            this.readWriteLockMetrics.writeLock().lock();
             float wiggleRoom = 0.15f; // todo - VALORIZAR MAIS OS SALTOS
             long score;
             long minScore = Long.MAX_VALUE;
@@ -218,11 +218,11 @@ public class RoutingTable implements IRoutingTable{
             }
 
             if(bestRoute != null && activateRoute(bestRoute.fst,bestRoute.snd))
-                return bestRoute;
+                return bestRoute.clone();
             else
                 return null;
         }finally {
-            this.readWriteLockMetrics.readLock().unlock();
+            this.readWriteLockMetrics.writeLock().unlock();
         }
     }
 
@@ -241,9 +241,9 @@ public class RoutingTable implements IRoutingTable{
     @Override
     public void printTables() {
         try{
-            this.readWriteLockProviders.writeLock().lock();
-            this.readWriteLockMetrics.writeLock().lock();
-            this.readWriteLockActive.writeLock().lock();
+            this.readWriteLockProviders.readLock().lock();
+            this.readWriteLockMetrics.readLock().lock();
+            this.readWriteLockActive.readLock().lock();
 
             System.out.println("\n\n********** Routing tables **********\n");
 
@@ -264,9 +264,9 @@ public class RoutingTable implements IRoutingTable{
 
             System.out.println("\n**********************************\n\n");
         }finally {
-            this.readWriteLockProviders.writeLock().unlock();
-            this.readWriteLockMetrics.writeLock().unlock();
-            this.readWriteLockActive.writeLock().unlock();
+            this.readWriteLockProviders.readLock().unlock();
+            this.readWriteLockMetrics.readLock().unlock();
+            this.readWriteLockActive.readLock().unlock();
         }
     }
 
@@ -362,12 +362,14 @@ public class RoutingTable implements IRoutingTable{
             this.readWriteLockProviders.writeLock().lock();
             this.readWriteLockMetrics.writeLock().lock();
             this.readWriteLockActive.writeLock().lock();
-            for (Tuple<String,String> key : this.metricsTable.keySet()){
+
+            for (Tuple<String,String> key : new ArrayList<>(this.metricsTable.keySet())){
                 if(key.snd.equals(neighbourName)) this.metricsTable.remove(key);
             }
-            for (Tuple<String,String> key : this.activeRoute.keySet()) {
+            for (Tuple<String,String> key : new ArrayList<>(this.activeRoute.keySet())) {
                 if(key.snd.equals(neighbourName)) this.activeRoute.remove(key);
             }
+
             this.providers.remove(neighbourName);
         }finally {
             this.readWriteLockProviders.writeLock().unlock();

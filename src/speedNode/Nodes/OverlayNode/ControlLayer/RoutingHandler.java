@@ -379,6 +379,7 @@ public class RoutingHandler implements Runnable {
         //TODO - activateBestRoute deve remover rotas de quem nao consegue ativar, e quando nao tiver rotas enviar recover route frame se nao conseguir ativar nenhuma rota
 
         //Activates best route
+        activateBestRouteActive = false;
         activateBestRoute(null, null);
     }
 
