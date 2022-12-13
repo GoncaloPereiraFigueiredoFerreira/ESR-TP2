@@ -17,10 +17,12 @@ public class BootstrapSharedInfo {
     private final ReentrantLock contactedNodesRL = new ReentrantLock();
     //private final Condition allContactedCond = contactedNodesRL.newCondition();
     private final Condition readyToStartCond = contactedNodesRL.newCondition();
-    private final int minOfReadyNodesToStart = 4;
+    private int minOfReadyNodesToStart = 4;
 
-    public BootstrapSharedInfo(Map<String, Tuple<Set<String>,Set<String>>> nodesMap) {
-        this.nodesMap = nodesMap;
+
+    public BootstrapSharedInfo(Tuple<Map<String, Tuple<Set<String>, Set<String>>>, Integer> nodesInfo){
+        this.nodesMap=nodesInfo.fst;
+        this.minOfReadyNodesToStart=nodesInfo.snd;
     }
 
 

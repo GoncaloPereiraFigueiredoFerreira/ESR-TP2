@@ -1,5 +1,6 @@
 package speedNode.Nodes.Bootstrap;
 
+import speedNode.Utilities.TOTPAuth;
 import speedNode.Utilities.TaggedConnection.Serialize;
 import speedNode.Utilities.TaggedConnection.Frame;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
@@ -13,6 +14,7 @@ public class BootstrapWorker implements Runnable{
     BootstrapSharedInfo sharedInfo;
     Socket socket;
     TaggedConnection connection;
+    TOTPAuth authenticator = new TOTPAuth("O Alex é lindo");
 
     /*
         | TAG | DESCRIPTION
@@ -38,20 +40,9 @@ public class BootstrapWorker implements Runnable{
             System.out.println("Received with number:" + frame.getNumber() + " | tag: " + frame.getTag());
 
             switch (frame.getTag()) {
-                case Tags.REQUEST_NEIGHBOURS_EXCHANGE:
-                    handleRequestNeighbours(frame);
-                    break;
-
-                case Tags.INFORM_READY_STATE:
-                    handleRequestStartPermission();
-                    break;
-
-                //case Tags.FLOOD_PERMISSION_EXCHANGE:
-                //    // Frame telling bootstrap that the node is a server
-                //    sharedInfo.canStartFlood();
-                //    connection.send(new Frame(0,Tags.FLOOD_PERMISSION_EXCHANGE,new byte[]{}));
+                case Tags.REQUEST_NEIGHBOURS_EXCHANGE -> handleRequestNeighbours(frame);
+                case Tags.INFORM_READY_STATE -> handleRequestStartPermission();
             }
-
             socket.close();
         } catch (IOException ignored) {}
     }
@@ -61,13 +52,21 @@ public class BootstrapWorker implements Runnable{
         // gets the neighbours of the contacting node. For each neighbour, gets its name, the interface
         // that the node should use to contact the neighbour and which
         // interface of the neighbour should be used to establish the connection
-        List<String> responseList = sharedInfo.getNameAndNeighbours(socket.getInetAddress().getHostAddress());
 
-        //If responseList == null, then the node does not belong to the overlay
-        if(responseList == null) return;
+        boolean authenticated = authenticator.validateMessage(frame.getData());
+        if (authenticated) {
 
-        connection.send(0,Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(responseList));
-        System.out.println("[Sent] tag: " + Tags.REQUEST_NEIGHBOURS_EXCHANGE + " | content: " + responseList);
+            List<String> responseList = sharedInfo.getNameAndNeighbours(socket.getInetAddress().getHostAddress());
+
+            //If responseList == null, then the node does not belong to the overlay
+            if (responseList == null) return;
+
+            connection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(responseList));
+            System.out.println("[Sent] tag: " + Tags.REQUEST_NEIGHBOURS_EXCHANGE + " | content: " + responseList);
+        }
+        else{
+            System.out.println("Request not authenticated");
+        }
     }
 
     private void handleRequestStartPermission() throws IOException {

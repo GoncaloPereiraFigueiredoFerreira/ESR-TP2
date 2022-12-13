@@ -11,6 +11,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 import speedNode.Utilities.TaggedConnection.Frame;
 import speedNode.Utilities.TaggedConnection.Tags;
@@ -53,6 +54,13 @@ public class ControlWorker implements Runnable{
 
     //Ready state
     private final BoolWithLockCond startPermission = new BoolWithLockCond(false);
+
+    //Flood timer
+    private Long floodTimeStamp;
+
+    //TOTP Authentication
+    private final TOTPAuth authenticator= new TOTPAuth("O Alex é lindo");
+
 
     public ControlWorker(String bootstrapIP, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.neighbourTable = neighbourTable;
@@ -108,8 +116,16 @@ public class ControlWorker implements Runnable{
                     threads.removeIf(t -> !t.isAlive());
 
                     //Handle received frame
-                    Tuple<String, Frame> tuple = framesInputQueue.popElem();
-                    handleFrame(tuple.fst, tuple.snd);
+                    Tuple<String, Frame> tuple = framesInputQueue.popElem(200, TimeUnit.MILLISECONDS);
+                    if (tuple != null )handleFrame(tuple.fst, tuple.snd);
+
+                    //Periodic flood
+                    if ( clientTable.hasServers() && System.currentTimeMillis() - this.floodTimeStamp > 30*1000) {
+                        List<String> Servers = clientTable.getAllServers();
+                        for (String server : Servers)
+                            startFlood(server);
+                    }
+
                 }
             }
         }catch (Exception e){
@@ -153,7 +169,8 @@ public class ControlWorker implements Runnable{
 
         //Get neighbours from bootstrap
         logger.info("Requesting neighbours from bootstrap.");
-        bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, new byte[]{});
+        byte[] hash = authenticator.encryptMessage();
+        bootstrapConnection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, hash);
 
         logger.info("Waiting for bootstrap response...");
         Frame neighboursFrame = bootstrapConnection.receive();
@@ -508,7 +525,6 @@ public class ControlWorker implements Runnable{
 
     private void startFlood(String server){
         List<String> neighbours = neighbourTable.getNeighbours();
-
         //Iterates through all neighbours and sends the flood frame for everyone that is active
         List<String> route = new ArrayList<>();
         route.add(nodeName);
