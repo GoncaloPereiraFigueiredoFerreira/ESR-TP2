@@ -13,7 +13,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 
-public class Bootstrap implements Runnable{
+public class Bootstrap implements Runnable {
     private ServerSocket ss;
     private final int ServerPort = 12345;
     private int soTimeout = 0; //ServerSocket Timeout
@@ -43,25 +43,28 @@ public class Bootstrap implements Runnable{
                         Thread t = new Thread(new BootstrapWorker(sharedInfo, s));
                         t.start();
                         threads.add(t);
+                    } catch (IOException ignored) {
                     }
-                    catch (IOException ignored){}
-                } catch (IOException ignored) {}
+                } catch (IOException ignored) {
+                }
             }
 
             ss.close();
 
             //Interrupts threads that are running
-            for(Thread t : threads)
-                if(t.isAlive() && !t.isInterrupted())
+            for (Thread t : threads)
+                if (t.isAlive() && !t.isInterrupted())
                     t.interrupt();
 
             //Waits for threads to stop running and join them
-            for(Thread t : threads) {
-                try { t.join();}
-                catch (InterruptedException ignored) {}
+            for (Thread t : threads) {
+                try {
+                    t.join();
+                } catch (InterruptedException ignored) {
+                }
             }
 
-        }catch (IOException ioe){
+        } catch (IOException ioe) {
             System.out.println("Could not initialize server socket!");
         }
     }
@@ -71,13 +74,13 @@ public class Bootstrap implements Runnable{
     public static void launch(List<String> args) {
         String filename = "bootstrap.xml";
 
-        for(int i = 0; i < args.size(); i++){
-            switch (args.get(i)){
+        for (int i = 0; i < args.size(); i++) {
+            switch (args.get(i)) {
                 case "-filename":
                 case "-file":
                 case "-f":
-                    if(i + 1 < args.size()){
-                        filename = args.get(i+1);
+                    if (i + 1 < args.size()) {
+                        filename = args.get(i + 1);
                         i++;
                     }
                     break;
@@ -90,16 +93,16 @@ public class Bootstrap implements Runnable{
         try {
             Bootstrap bootstrap = new Bootstrap(filename);
             bootstrap.run();
-        }catch (Exception e){
+        } catch (Exception e) {
             System.out.println(e.getMessage());
         }
     }
 
 
     // *************** Read Config .XML file ***************
-    public static Map<String, Tuple<Set<String>,Set<String>>> readConfigFile(String filename) throws Exception{
+    public static Tuple<Map<String, Tuple<Set<String>, Set<String>>>, Integer> readConfigFile(String filename) throws Exception {
 
-        Map<String,Tuple<Set<String>,Set<String>>> nodesMap = new HashMap<>();
+        Map<String, Tuple<Set<String>, Set<String>>> nodesMap = new HashMap<>();
         File file = new File(filename);
 
         if (!file.exists())
@@ -123,22 +126,29 @@ public class Bootstrap implements Runnable{
             Set<String> name_vizinhos = new HashSet<>();
             var attributes = node.getAttributes();
 
-            if(attributes == null || (name= attributes.getNamedItem("name"))==null)
+            if (attributes == null || (name = attributes.getNamedItem("name")) == null)
                 throw new Exception("Node needs to have an attribute \"name\".");
 
             var vizinhos = node.getChildNodes();
             for (int j = 0; j < vizinhos.getLength(); j++) {
                 Node vizinho = vizinhos.item(j);
-                if(vizinho != null)
+                if (vizinho != null)
                     attributes = vizinho.getAttributes();
                 if (vizinho != null && vizinho.getNodeName().equals("interface"))
                     ips_interfaces.add(attributes.getNamedItem("ip").getTextContent());
                 else if (vizinho != null && vizinho.getNodeName().equals("neighbour"))
                     name_vizinhos.add(attributes.getNamedItem("name").getTextContent());
             }
-            Tuple<Set<String>,Set<String>> tuple = new Tuple<>(ips_interfaces,name_vizinhos);
+            Tuple<Set<String>, Set<String>> tuple = new Tuple<>(ips_interfaces, name_vizinhos);
             nodesMap.put(name.getTextContent(), tuple);
         }
-        return nodesMap;
+        Integer number_nodes;
+        try {
+            String nodes = doc.getElementsByTagName("overlay").item(0).getAttributes().getNamedItem("nodes").getTextContent();
+            number_nodes = Integer.parseInt(nodes);
+        } catch (NullPointerException | NumberFormatException e) {
+            number_nodes = nodesMap.size();
+        }
+        return new Tuple<>(nodesMap, number_nodes);
     }
 }
