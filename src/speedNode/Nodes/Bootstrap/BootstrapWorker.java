@@ -14,7 +14,7 @@ public class BootstrapWorker implements Runnable{
     BootstrapSharedInfo sharedInfo;
     Socket socket;
     TaggedConnection connection;
-    TOTPAuth authenticator = new TOTPAuth("O Alex é lindo");
+    TOTPAuth authenticator = new TOTPAuth("O Alex e lindo");
 
     /*
         | TAG | DESCRIPTION
@@ -62,7 +62,6 @@ public class BootstrapWorker implements Runnable{
             if (responseList == null) return;
 
             connection.send(0, Tags.REQUEST_NEIGHBOURS_EXCHANGE, Serialize.serializeListOfStrings(responseList));
-            System.out.println("[Sent] tag: " + Tags.REQUEST_NEIGHBOURS_EXCHANGE + " | content: " + responseList);
         }
         else{
             System.out.println("Request not authenticated");

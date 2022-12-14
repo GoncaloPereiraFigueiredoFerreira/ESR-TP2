@@ -23,7 +23,7 @@ public class TOTPAuth {
     public byte[] encryptMessage() {
         long seconds = System.currentTimeMillis()/1000;
         System.out.println("Seconds: "+seconds);
-        System.out.println("Encrypted: " + Arrays.toString(returnTOTP(seconds)));
+        System.out.println("Encrypted: " + Arrays.toString(md.digest(returnTOTP(seconds))));
         return md.digest(returnTOTP(seconds));
     }
 
@@ -35,10 +35,12 @@ public class TOTPAuth {
 
     public boolean validateMessage(byte[] message){
         boolean flag = false;
-        long seconds = System.currentTimeMillis()/1000;
+        long seconds = System.currentTimeMillis()/1000 + 5;
         int secCounter=0;
+
         while (!flag && secCounter<30){
-            seconds = seconds - secCounter;
+            seconds--;
+
             if (Arrays.equals(md.digest(returnTOTP(seconds)),message)){
                 System.out.println("Passwords Matched");
                 flag=true;

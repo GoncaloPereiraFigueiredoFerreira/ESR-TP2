@@ -62,7 +62,7 @@ public class ControlWorker implements Runnable{
     private Long floodTimeStamp;
 
     //TOTP Authentication
-    private final TOTPAuth authenticator= new TOTPAuth("O Alex é lindo");
+    private final TOTPAuth authenticator= new TOTPAuth("O Alex e lindo");
 
 
     public ControlWorker(String bootstrapIP, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
@@ -91,6 +91,13 @@ public class ControlWorker implements Runnable{
                             case "c" -> {System.out.println("[" + nodeName + "]\n"); clientTable.printTable();}
                             case "q" -> {System.out.println("[" + nodeName + "]\n "); if(routingHandler != null) routingHandler.printQueues(); else
                                 System.out.println("Routing handler is nulll");}
+                            case "f" -> {
+                                if ( clientTable.hasServers() && System.currentTimeMillis() - this.floodTimeStamp > 30*1000) {
+                                    List<String> Servers = clientTable.getAllServers();
+                                    for (String server : Servers)
+                                        startFlood(server);
+                                }
+                            }
                         }
                     }
 
@@ -121,8 +128,8 @@ public class ControlWorker implements Runnable{
                     threads.removeIf(t -> !t.isAlive());
 
                     //Handle received frame
-                    Tuple<String, Frame> tuple = framesInputQueue.pollElem();
-                    if (tuple != null )handleFrame(tuple.fst, tuple.snd);
+                    Tuple<String, Frame> tuple = framesInputQueue.pollElem(100, TimeUnit.MILLISECONDS);
+                    if (tuple != null) handleFrame(tuple.fst, tuple.snd);
 
                     //Periodic flood
                     if ( clientTable.hasServers() && System.currentTimeMillis() - this.floodTimeStamp > 30*1000) {
@@ -503,6 +510,7 @@ public class ControlWorker implements Runnable{
      */
 
     private void startFlood(String server){
+        this.floodTimeStamp = System.currentTimeMillis();
         List<String> neighbours = neighbourTable.getNeighbours();
         //Iterates through all neighbours and sends the flood frame for everyone that is active
         List<String> route = new ArrayList<>();
@@ -510,6 +518,7 @@ public class ControlWorker implements Runnable{
         sendFloodFrame(neighbours, // list of neighbours that should receive the flood
                        floodControl.getNextFloodIndex(server), //flood identification
                        new FloodControl.FloodInfo(server, 0, System.nanoTime(), route));
+        System.out.println("Flood index: " + floodControl.getCurrentFloodIndex(server));
     }
 
     private void handleFloodFrame(String neighbourName, Frame frame) throws IOException{
