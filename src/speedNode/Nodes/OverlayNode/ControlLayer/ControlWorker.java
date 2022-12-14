@@ -1,5 +1,8 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
+import speedNode.Nodes.OverlayNode.ControlLayer.SpecializedFrames.ActivateRouteRequestFrame;
+import speedNode.Nodes.OverlayNode.ControlLayer.SpecializedFrames.DeactivateRouteFrame;
+import speedNode.Nodes.OverlayNode.ControlLayer.SpecializedFrames.RecoverRouteFrame;
 import speedNode.Nodes.OverlayNode.TransmissionLayer.TransmissionWorker;
 import speedNode.Utilities.*;
 import speedNode.Nodes.OverlayNode.Tables.*;
@@ -65,7 +68,7 @@ public class ControlWorker implements Runnable{
     public void run() {
         try{
             //Creates logger
-            this.logger = MyLogger.createLogger(UUID.randomUUID().toString(), "---","", false);
+            this.logger = MyLogger.createLogger(UUID.randomUUID().toString(), "---", null, true);
             logger.info("Running...");
 
             // ************** DEBUG
@@ -78,6 +81,8 @@ public class ControlWorker implements Runnable{
                             case "r" -> {System.out.println("[" + nodeName + "]\n"); routingTable.printTables();}
                             case "n" -> {System.out.println("[" + nodeName + "]\n"); neighbourTable.printTable();}
                             case "c" -> {System.out.println("[" + nodeName + "]\n"); clientTable.printTable();}
+                            case "q" -> {System.out.println("[" + nodeName + "]\n "); if(routingHandler != null) routingHandler.printQueues(); else
+                                System.out.println("Routing handler is nulll");}
                         }
                     }
 
@@ -108,7 +113,7 @@ public class ControlWorker implements Runnable{
                     threads.removeIf(t -> !t.isAlive());
 
                     //Handle received frame
-                    Tuple<String, Frame> tuple = framesInputQueue.popElem();
+                    Tuple<String, Frame> tuple = framesInputQueue.pollElem();
                     handleFrame(tuple.fst, tuple.snd);
                 }
             }
@@ -172,13 +177,10 @@ public class ControlWorker implements Runnable{
         //Initial fill of neighbours' table
         for(int i = 0 ; i < responseList.size(); i += 3){
             //Tries to connect to the neighbour if he doesnt already exist
-            try {
-                neighbourTable.writeLock();
-                if (neighbourTable.addNeighbour(responseList.get(i),
-                        responseList.get(i + 1),
-                        responseList.get(i + 2)))
-                    connectToNeighbour(responseList.get(i));
-            }finally { neighbourTable.writeUnlock(); }
+            if (neighbourTable.addNeighbour(responseList.get(i),
+                    responseList.get(i + 1),
+                    responseList.get(i + 2)))
+                connectToNeighbour(responseList.get(i));
         }
 
 
@@ -227,12 +229,17 @@ public class ControlWorker implements Runnable{
 
                     //Only adds the connection if there isn't already a connection
                     //Or, in case there is one active, if the neighbours IP is lexically superior
-                    ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbourName);
-                    if(ch == null || neighbourIP.compareTo(localIP) > 0)
-                        initiateNeighbourConnectionReceiver(neighbourName, tc);
-                    else {
-                        s.close();
-                        return;
+                    try{
+                        neighbourTable.writeLock();
+                        ConnectionHandler ch = neighbourTable.getConnectionHandler(neighbourName);
+                        if(ch == null || neighbourIP.compareTo(localIP) > 0)
+                            initiateNeighbourConnectionReceiver(neighbourName, tc);
+                        else {
+                            s.close();
+                            return;
+                        }
+                    }finally {
+                        neighbourTable.writeUnlock();
                     }
                 }finally{neighbourTable.writeUnlock();}
             }
@@ -355,8 +362,11 @@ public class ControlWorker implements Runnable{
     }
 
     private void closeClientConnection(String contact) {
+        logger.info("Client " + contact + " no longer wants the stream.");
         clientTable.removeClient(contact);
-        sendFrameToRoutingHandler(null, new Frame(0, Tags.DEACTIVATE_ROUTE, new byte[]{}));
+        Frame frame = new DeactivateRouteFrame(null).serialize();
+
+        sendFrameToRoutingHandler(null, frame);
     }
 
     private String identifyNeighbour(List<String> ipv4InterfacesNeighbour) {
@@ -370,15 +380,6 @@ public class ControlWorker implements Runnable{
         activateBestRoute();
 
         Tuple<String, String> route = routingTable.getActiveRoute();
-        if(route != null)
-            System.out.println("Melhor rota (ACCEPT NEW CLIENT): " +  route.fst +  "  " + route.snd);
-        else
-            System.out.println("Rota é nula! (ACCEPT NEW CLIENT)");
-
-        if(routingTable == null || routingTable.getActiveRoute() == null){
-            tc.send(0, Tags.CANCEL_STREAM, new byte[]{});
-            return;
-        }
 
         //Sends frame informing the acceptance of the client //TODO - verificar palavra-passe para seguranca
         tc.send(0, Tags.CONNECT_AS_CLIENT_EXCHANGE, new byte[]{});
@@ -472,29 +473,8 @@ public class ControlWorker implements Runnable{
     /* ****** Activate best route ****** */
 
     private void activateBestRoute(){
-        if(routingHandler == null)
-            return;
-
-        Frame frame = new Frame(0, Tags.ACTIVATE_ROUTE, new byte[]{});
+        Frame frame = new ActivateRouteRequestFrame(false).serialize();
         sendFrameToRoutingHandler(null, frame);
-
-        routingHandler.waitForRouteUpdate();
-    }
-
-    private void deactivateRoute(String neighbourName){
-        if(routingHandler == null)
-            return;
-
-        Frame frame = new Frame(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
-        sendFrameToRoutingHandler(neighbourName, frame);
-    }
-
-    private void recoverRoute(String neighbourName){
-        if(routingHandler == null)
-            return;
-
-        Frame frame = new Frame(0, Tags.RECOVER_ROUTE, new byte[]{});
-        sendFrameToRoutingHandler(neighbourName, frame);
     }
 
     /* ****** Flood ****** */
@@ -597,22 +577,8 @@ public class ControlWorker implements Runnable{
      * @param neighbourName Name of the neighbour that closed
      */
     private void handleCloseConnection(String neighbourName){
-        // If neighbour was a provider
-            //delete neighbour routes
-            //if there are other routes then try to activate them
-            //else sends to the neighbours wantingTheStream to delete the route and try it themselves
-        var activeRoute = this.routingTable.getActiveRoute();
-        boolean wasActiveRoute = activeRoute != null && activeRoute.snd.equals(neighbourName);
-        this.neighbourTable.updateWantsStream(neighbourName,false);
-        
-        if(wasActiveRoute)
-            recoverRoute(neighbourName);
-        else{
-            this.routingTable.removeRoutes(neighbourName);
-            //If neighbour was the only one wanting the stream, cancels the stream
-            if(this.neighbourTable.getNeighboursWantingStream().size()==0)
-                deactivateRoute(neighbourName);
-        }
+        Frame frame = new RecoverRouteFrame(neighbourName).serialize();
+        sendFrameToRoutingHandler(neighbourName, frame);
     }
 
     /* ****** Handle Frames Received ****** */
@@ -623,10 +589,7 @@ public class ControlWorker implements Runnable{
             switch (frame.getTag()){
                 case Tags.FLOOD -> handleFloodFrame(neighbourName, frame);
                 case Tags.CLOSE_CONNECTION ->  handleCloseConnection(neighbourName);
-                default -> {
-                    if(routingHandler != null)
-                        sendFrameToRoutingHandler(neighbourName, frame);
-                }
+                default -> sendFrameToRoutingHandler(neighbourName, frame);
             }
 
         }catch (Exception e){

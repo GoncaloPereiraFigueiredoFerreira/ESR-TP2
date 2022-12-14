@@ -1,19 +1,22 @@
 package speedNode.Utilities;
 
-import javax.sound.midi.Soundbank;
 import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class ProtectedQueue<X> {
-    private final Deque<X> queue = new ArrayDeque<>();
+    private Queue<X> queue = new ArrayDeque<>();
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final Condition cond = rwLock.writeLock().newCondition();
 
     public ProtectedQueue(){}
+
+    public ProtectedQueue(Queue<X> queue){
+        this.queue = queue;
+    }
 
     //public X popElem(){
     //    try{
@@ -24,11 +27,11 @@ public class ProtectedQueue<X> {
     //    }
     //}
 
-    public X popElem(){
-        return popElem(true);
+    public X pollElem(){
+        return pollElem(true);
     }
 
-    public X popElem(boolean await){
+    public X pollElem(boolean await){
         try{
             rwLock.writeLock().lock();
             //System.out.println("Length of the queue: " + this.length());
@@ -37,19 +40,19 @@ public class ProtectedQueue<X> {
                 try { cond.await();}
                 catch (InterruptedException ignored) {}
             }
-            return queue.pop();
+            return queue.poll();
         }finally {
             rwLock.writeLock().unlock();
         }
     }
 
-    public X popElem(long time, TimeUnit timeUnit){
+    public X pollElem(long time, TimeUnit timeUnit){
         try{
             rwLock.writeLock().lock();
             // Fica bloqueado a espera de pacotes na queue
             try { cond.await(time, timeUnit);}
             catch (InterruptedException ignored) {}
-            return queue.size() != 0 ? queue.pop() : null;
+            return queue.poll();
         }finally {
             rwLock.writeLock().unlock();
         }
@@ -107,6 +110,15 @@ public class ProtectedQueue<X> {
     }
 
 
+    //TODO - tirar este metodo
+    public String printQueue(){
+        try {
+            rwLock.readLock().lock();
+            return queue.toString();
+        }finally {
+            rwLock.readLock().unlock();
+        }
 
+    }
 
 }

@@ -1,22 +1,20 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
+import speedNode.Nodes.OverlayNode.ControlLayer.SpecializedFrames.*;
 import speedNode.Nodes.OverlayNode.Tables.IClientTable;
 import speedNode.Nodes.OverlayNode.Tables.INeighbourTable;
 import speedNode.Nodes.OverlayNode.Tables.IRoutingTable;
 import speedNode.Utilities.ProtectedQueue;
-import speedNode.Utilities.TaggedConnection.Serialize;
 import speedNode.Utilities.TaggedConnection.Frame;
 import speedNode.Utilities.TaggedConnection.TaggedConnection;
 import speedNode.Utilities.TaggedConnection.Tags;
 import speedNode.Utilities.Tuple;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 public class RoutingHandler implements Runnable {
     private final String nodeName;
@@ -24,7 +22,12 @@ public class RoutingHandler implements Runnable {
     private final IRoutingTable routingTable;
     private final IClientTable clientTable;
     private final Logger logger;
-    private final ProtectedQueue<Tuple<String, Frame>> routingFramesQueue = new ProtectedQueue<>();
+    private final SortedSet<String> sortedSet = new TreeSet<>();
+    private final ProtectedQueue<BaseFrame> otherFramesQueue = new ProtectedQueue<>(new PriorityQueue<>());
+    private final ProtectedQueue<BaseFrame> responseFramesQueue = new ProtectedQueue<>(new PriorityQueue<>());
+    private boolean waitForResponse = false;
+    private final ReentrantLock queuesLock = new ReentrantLock(true);
+    private final Condition queuesCond = queuesLock.newCondition();
 
     public RoutingHandler(String nodeName, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable, Logger logger) {
         this.nodeName = nodeName;
@@ -34,371 +37,548 @@ public class RoutingHandler implements Runnable {
         this.logger = logger;
     }
 
+    //TODO - tirar scanner
+
+    public void printQueues(){
+        System.out.println("responsesQueue: " + responseFramesQueue.printQueue());
+        System.out.println("otherFramesQueue: " + otherFramesQueue.printQueue());
+        System.out.println("waitForResponse: " + waitForResponse);
+    }
+
+
+    /* ******* Frame insertion into/removal from queues ******* */
+
+    /**
+     * Returns a frame, giving priority to responses. If the flag "waitForResponse" is active, even if
+     * the otherFramesQueue has frames, a null will be returned.
+     * @return tuple. First element represents if the frame (second element) is a response.
+     * @throws InterruptedException
+     */
+    private Tuple<Boolean,BaseFrame> pollFrame() throws InterruptedException {
+        try {
+            queuesLock.lock();
+
+            BaseFrame bf = responseFramesQueue.pollElem(100, TimeUnit.MILLISECONDS);
+            if(bf != null) {
+                return new Tuple<>(responseFramesQueue.length() != 0, bf);
+            }
+            else {
+                bf = otherFramesQueue.pollElem(false);
+                return new Tuple<>(false, bf);
+            }
+        }finally {
+            queuesLock.unlock();
+        }
+    }
+
+    private BaseFrame pollFromResponsesQueue(){
+        try {
+            queuesLock.lock();
+            return responseFramesQueue.pollElem(false);
+        }finally {
+            queuesLock.unlock();
+        }
+    }
+
+    private BaseFrame pollFromOtherFramesQueue(){
+        try {
+            queuesLock.lock();
+            return otherFramesQueue.pollElem(false);
+        }finally {
+            queuesLock.unlock();
+        }
+    }
+
+    private void insertIntoResponseFramesQueue(BaseFrame bf){
+        if(bf == null) {
+            return;
+        }
+        try {
+            queuesLock.lock();
+            responseFramesQueue.pushElem(bf);
+            queuesCond.signalAll();
+        }finally { queuesLock.unlock(); }
+    }
+
+    private void insertIntoOtherFramesQueue(BaseFrame bf){
+        if(bf == null) {
+            return;
+        }
+        try {
+            queuesLock.lock();
+            otherFramesQueue.pushElem(bf);
+            queuesCond.signalAll();
+        }finally { queuesLock.unlock(); }
+    }
+    
+    /* ******* Main function ******* */
+
     @Override
     public void run() {
         logger.info("Routing handler started.");
-        while(!Thread.currentThread().isInterrupted()){
-            //Handle received frame
-            handleRoutingFrame();
+        while(true) {
+            // Responses have maximum priority, so the thread wont exist the next loop until
+            // a frame that is not a response is polled
+            Tuple<Boolean,BaseFrame> tuple;
+            boolean flag = true;
+            while (flag){
+                try { tuple = pollFrame(); }
+                catch (InterruptedException e) { return; }
+                flag = tuple.fst;
+                handleRoutingFrame(tuple.snd);
+            }
 
             if(this.routingTable.checkDelay())
-                activateBestRoute(null, null);
+                insertIntoOtherFramesQueue(new ActivateRouteRequestFrame(true));
         }
-        logger.info("Routing handler stopped.");
+        //logger.info("Routing handler stopped.");
     }
 
-    private void handleRoutingFrame(){
-        Tuple<String,Frame> tuple = this.routingFramesQueue.popElem(200, TimeUnit.MILLISECONDS);
-        if(tuple != null) {
-            String neighbourName = tuple.fst;
-            Frame frame = tuple.snd;
-            switch (frame.getTag()) {
-                case Tags.ACTIVATE_ROUTE -> handleActivateRoute(neighbourName, frame);
-                case Tags.DEACTIVATE_ROUTE -> handleDeactivateRoute(neighbourName);
-                case Tags.RESPONSE_ACTIVATE_ROUTE -> handleActivateBestRouteResponse(neighbourName, frame);
-                case Tags.RECOVER_ROUTE -> handleRecoverRoute(neighbourName);
-            }
-        }
-    }
-
-    /* ************* Activate Best Route / Handle ACKS/NACKS *************** */
-
-    //Nodes that either contacted or got contacted about activating a new route
-    private final Set<String> nodesActivateRoute = new HashSet<>();
-    private final Set<String> nodesAskedToActivateRoute = new HashSet<>();
-    private final Set<String> requesters = new HashSet<>();
-    private boolean activateBestRouteActive = false;
-
-    //Used when a change of route was requested and immediately after a deactivation of the active route,
-    // not giving enough time for the response of the first request to get back. This bool is used to ignore
-    // the response.
-    //private boolean deactivatedRoute = false;
-    private String prevProvName = null; //Previous provider name
-
-    /**
-     * Tries to activate the best route. Only performed if an activation of the best route is not already in execution.
-     * @param neighbourName Requester of the activation. Name of the neighbour, or "null" if the node itself requested the activation.
-     * @param contacted Like a route pinning, in order to avoid loops.
-     */
-    private void activateBestRoute(String neighbourName, Collection<String> contacted) {
-        if(neighbourName != null)
-            logger.info(neighbourName + " requested activation of best route. Contacted nodes: " + contacted);
-        else
-            logger.info("Self request of activation of best route.");
-
-        //If the neighbourName == null, then the node itself
-        // requested the activation of the best route.
-        if(neighbourName != null) {
-            if (contacted != null) {
-                if (contacted.contains(nodeName)) {
-                    logger.info("Loop detected. Wont activate a new best route.");
-                    sendActivateRouteResponse(false);
-                    return;
-                }
-                nodesActivateRoute.addAll(contacted);
-            }
-            nodesActivateRoute.add(neighbourName);
-            requesters.add(neighbourName);
-        }
-
-        //Checks if an activation of the best route is already in course
-        if(!activateBestRouteActive){
-            activateBestRouteActive = true;
-            //deactivatedRoute = false;
-
-            //Not a server
-            if(!clientTable.hasServers()){
-                logger.info("Not a server. Trying to activate best route.");
-                Tuple<String,String> prevRoute = routingTable.getActiveRoute();
-
-                //Calculates the best route excluding all the nodes in the given set
-                Set<String> excludedNodes = new HashSet<>(nodesActivateRoute);
-                excludedNodes.addAll(nodesAskedToActivateRoute);
-                Tuple<String,String> newRoute = routingTable.activateBestRoute(excludedNodes);
-
-                //If there is no valid route available throws exception
-                if(newRoute == null){
-                    logger.info("Could not find a best route.");
-                    if(!requesters.isEmpty()) {
-                        sendActivateRouteResponse(false);
-                        return;
-                    }
-                    //TODO - recovery mode
-                    return;
-                }
-
-                logger.info("Trying to activate the route " + newRoute + ". Previous route is " + prevRoute);
-
-                //Registers the name of the previous provider,
-                // so it can be used to cancel the route,
-                // when the new one is activated
-                if(prevProvName == null && prevRoute != null)
-                    prevProvName = prevRoute.snd;
-
-                String newProvName = newRoute.snd;
-
-                //If the best route is still the same,
-                // sets the 'prevProvName' to null
-                // to avoid the deactivation of the route
-                if(newProvName.equals(prevProvName))
-                    prevProvName = null;
-
-                //Registers node that is going to be contacted to activate the route
-                // in order to avoid the repetition of the same request
-                nodesAskedToActivateRoute.add(newProvName);
-
-                //Adds the name of the node to the route that the request travelled
-                List<String> newContacted = new ArrayList<>();
-                if(contacted != null) newContacted.addAll(contacted);
-                newContacted.add(nodeName);
-
-                //Requests the neighbour (next node in the new route) to activate it
-                try { sendActivateRouteRequest(newProvName, newContacted); }
-                catch (IOException ioe){
-                    //Tries to activate a new route, when requesting to activate route fails
-                    logger.info("Activating the new route failed. Will try again.");
-                    activateBestRouteActive = false; //Necessary so a new iteration of activateBestRoute can happen
-                    activateBestRoute(null, null);
-                }
-            }else {
-                logger.info("Is server. Accepting activation of route...");
-                sendActivateRouteResponse(true);
-            }
-        } else logger.info("Activation of best route already in course.");
-
-        logger.info("Exiting the method: Activation Of Best Route");
-    }
-
-    /**
-     * If the provider is still providing the stream and if the neighbour is the only one
-     * wanting the stream, deactivates the route. The route is also deactivate if the node itself
-     * demands it.
-     * @param provider Neighbour node that provides the stream
-     * @param neighbourName Neighbour that requested the deactivation of the route.
-     *                      If 'null' then the node itself requested the deactivation of the route.
-     */
-    private void deactivateRoute(String provider, String neighbourName) {
-        //Neighbour requested the deactivation, therefore it no longer wants the stream
-        if (neighbourName != null) {
-            logger.info(neighbourName + " no longer wants the stream.");
-            neighbourTable.updateWantsStream(neighbourName, false);
-        }
-
-        //Requests the provider to deactivate the route,
-        // if the node itself wants to close the route
-        // or if there are no neighbours wanting the stream
-        if (neighbourName == null || !neighbourTable.anyNeighbourWantsTheStream()) {
-            try {
-                TaggedConnection tc = neighbourTable.getConnectionHandler(provider).getTaggedConnection();
-                tc.send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
-                logger.info("Sent deactivate route frame to " + neighbourName);
-            } catch (Exception ignored) {}
-            routingTable.deactivateRoute(provider);
-            logger.info("Route from provider " + provider + " deactivated.");
-        }
-        else logger.info("No route was deactivated!");
-    }
-
-    /**
-     * Handles a frame that contains the response to the request of activating the best route.
-     * If a request of activation of the best route was undergoing when the deactivation of the current route happened,
-     * then the response should be discarded and the message that the activation of the route could not be performed
-     * should be propragated to the requesters.
-     * @param neighbourName Name of the neighbour that sent the response
-     * @param frame Activate Best Route Response Frame
-     */
-    private void handleActivateBestRouteResponse(String neighbourName, Frame frame){
-        if(frame == null) return;
-        boolean response;
-
-        try {
-            //if(deactivatedRoute) {
-            //    logger.info("Received response to the request of activating the best route after a request to close the route.");
-            //    sendActivateRouteResponse(false);
-            //}
-            //else {
-                Tuple<String, String> activeRoute = routingTable.getActiveRoute();
-                response = Serialize.deserializeBoolean(frame.getData());
-
-                //If the node is not connected to servers and some node sent a response, then it is ignored
-                // since a node attached to a server does not ask for a route
-                //Or if no route is active
-                //Or if the neighbour that sent the package does not belong to the current route
-                if(clientTable.hasServers()){
-                    if(neighbourName != null && response) {
-                        try {
-                            TaggedConnection tc = neighbourTable.getConnectionHandler(neighbourName).getTaggedConnection();
-                            tc.send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
-                        } catch (Exception ignored) {
-                        }
-                        sendActivateRouteResponse(true);
-                    }
-                    return;
-                } else if (activeRoute == null || !activeRoute.snd.equals(neighbourName)) {
-                    try {
-                        TaggedConnection tc = neighbourTable.getConnectionHandler(neighbourName).getTaggedConnection();
-                        tc.send(0, Tags.DEACTIVATE_ROUTE, new byte[]{});
-                    }catch (Exception ignored){}
-                    return;
-                }
-
-                //System.out.println("Response a activate best route recebida: (" + response + ")");
-
-                if (response) {
-                    sendActivateRouteResponse(true);
-                    //System.out.println("Desativando rota anterior : " + prevProvName);
-                    deactivateRoute(prevProvName, null);
-
-                    //Update previous provider IP to the current active route
-                    prevProvName = activeRoute.snd;
-                } else {
-                    //remove routes from the node that sent the false response
-                    routingTable.removeRoutes(neighbourName);
-                    activateBestRouteActive = false;
-                    activateBestRoute(null, null);
-                }
-            //}
-        }catch (IOException ioe){ return; }
-    }
-
-    private void handleActivateRoute(String neighbourName,Frame frame){
-        List<String> contacted = null;
-        try {
-            contacted = Serialize.deserializeListOfStrings(frame.getData());
-        } catch (IOException ignored) {}
-        //System.out.println("Nodos contactados (ACTIVATE ROUTE): " + contacted);
-        activateBestRoute(neighbourName, contacted);
-    }
-
-    private void handleDeactivateRoute(String neighbourName) {
-
-        // If an activate route request is active, and if the neighbour, that requested the
-        //deactivation of the route, was one of the requesters, removes him.
-        if(activateBestRouteActive){
-            boolean contained = requesters.remove(neighbourName);
-
-            if(contained)
-                logger.info("Removed " + neighbourName + " from the new route activation requesters.");
-
-            //if the neighbour was the only requester, and if the node does not have
-            // clients, then a new activation of best route can be requested
-            if(contained && requesters.size() == 0 && !clientTable.hasClients()){
-                logger.info("Node does not have clients, and was the only requester, so a new route activation is allowed.");
-                activateBestRouteActive = false;
-                nodesActivateRoute.clear();
-                nodesAskedToActivateRoute.clear();
-                requesters.clear();
-            }
-        }
-
-        //deactivatedRoute = true;
-        Tuple<String,String> activeRoute = routingTable.getActiveRoute();
-        String provider = activeRoute != null ? activeRoute.snd : null;
-        deactivateRoute(provider, neighbourName);
-        deactivateRoute(prevProvName, null); //Deactivates the previous route if it exists
-    }
-
-    private void sendActivateRouteRequest(String neighbourName, List<String> contacted) throws IOException {
-        try {
-            //System.out.println("SENDING ACTIVATE ROUTE REQUEST TO " + neighbourName);
-            TaggedConnection tc = neighbourTable.getConnectionHandler(neighbourName).getTaggedConnection();
-            tc.send(0, Tags.ACTIVATE_ROUTE, Serialize.serializeListOfStrings(contacted));
-            logger.info("Sent activate route request to " + neighbourName + ". Contacted nodes: " + contacted);
-        }catch (Exception e){
-            logger.info("Could not send route request to " + neighbourName);
-            activateBestRouteActive = false;
-            activateBestRoute(null, null);
+    private void handleRoutingFrame(BaseFrame bf){
+        //Handle Activate Route Request Frame
+        if(bf instanceof ActivateRouteRequestFrame){
+            ActivateRouteRequestFrame arReqFrame = (ActivateRouteRequestFrame) bf;
+            boolean handled = activateRoute(arReqFrame);
+            if(!handled) insertIntoOtherFramesQueue(arReqFrame);
+        } else if (bf instanceof ActivateRouteResponseFrame) {
+            ActivateRouteResponseFrame arRespFrame = (ActivateRouteResponseFrame) bf;
+            handleActivateRouteResponse(arRespFrame);
+        }else if (bf instanceof DeactivateRouteFrame) {
+            DeactivateRouteFrame drf = (DeactivateRouteFrame) bf;
+            handleDeactivateRoute(drf);
+        }else if (bf instanceof RecoverRouteFrame) {
+            RecoverRouteFrame rrf = (RecoverRouteFrame) bf;
+            handleRecoverRoute(rrf);
         }
     }
+
+    /* ******* Route activation ******* */
+
+    private boolean activateRouteInCourse = false;
+    private String lastNodeRequested = null; //Last node that a request to activate/update route was sent
+    private Long timestampLastARR = null; //timestamp of the last activate route request
+    private Set<String> requesters = new HashSet<>();
+    private Set<String> contactedNodes = new HashSet<>();
+    private Tuple<String,String> newRoute = null; //New Route that is being tested
+    private boolean recoverRoute = false; //used in case a recover route was issued, if a new route could not be activated then,
+                                          // all the neighbours receiving the stream from this node should be notified to recover the route
 
     /**
      *
-     * @param response
-     * @throws IOException
+     * @param arReqFrame Activate Route Request Frame
+     * @return true if the frame was handled correctly. 
+     * Otherwise, false, meaning the frame should be inserted in the queue, 
+     * to be handled again after a response has been received.
+     * A self request (arReqFrame.neighbourName == null) must not go to the queue again.
      */
-    private void sendActivateRouteResponse(boolean response){
-        try {
-            Collection<String> neighboursToContact = neighbourTable.getNeighbours()
-                    .stream()
-                    .filter(requesters::contains)
-                    .collect(Collectors.toSet());
+    private boolean activateRoute(ActivateRouteRequestFrame arReqFrame){
+        String neighbourName = arReqFrame.neighbourName;
 
-            logger.info("Sending activate route response to " + neighboursToContact);
+        if(neighbourName != null)
+            logger.info(neighbourName + " requested activation of best route. Contacted nodes: " + arReqFrame.contactedNodes);
+        else
+            logger.info("Self request of activation of best route.");
 
-            for (String n : neighboursToContact) {
-                try {
-                    //System.out.println("SENDING ACTIVATE ROUTE RESPONSE TO " + n);
-                    TaggedConnection tc = neighbourTable.getConnectionHandler(n).getTaggedConnection();
-                    tc.send(0, Tags.RESPONSE_ACTIVATE_ROUTE, Serialize.serializeBoolean(response));
-
-                    if (response) {
-                        logger.info("Sent positive activate route response to " + n);
-                        neighbourTable.updateWantsStream(n, true);
-                    }else logger.info("Sent negative activate route response to " + n);
-
-                } catch (Exception ignored) {}
+        //Is a server
+        if(clientTable.hasServers()){
+            //if the requester is a neighbour (not a self request)
+            if(neighbourName != null) {
+                //Marks the neighbour has someone that wants the stream
+                neighbourTable.wantsStream(neighbourName);
+                //Sends response informing that the stream was activated
+                sendActivateRouteResponse(List.of(neighbourName), true);
+                clearAllRequestVariables();
             }
-        }finally {
-            logger.info("Activation of route is unlocked.");
+            return true;
+        }
+        else{ //If it is not a server
 
-            activateBestRouteActive = false;
-            nodesActivateRoute.clear();
-            nodesAskedToActivateRoute.clear();
-            requesters.clear();
-            try {
-                routeUpdateLock.lock();
-                routeUpdateCond.signalAll();
-                //System.out.println("\nSIGNALED ROUTE UPDATE\n");
-            }finally { routeUpdateLock.unlock(); }
+            //Performs the reunion of the nodes that were already contacted by this node, the nodes contacted by the neighbour and the neighbours receiving the stream
+            Set<String> reunionOfContactedNodes = new HashSet<>(contactedNodes);
+            List<String> neighboursWantingStream = neighbourTable.getNeighboursWantingStream();
+            reunionOfContactedNodes.addAll(arReqFrame.contactedNodes);
+            reunionOfContactedNodes.addAll(neighboursWantingStream);
 
-            //System.out.println("*** ACABADO SEND ACTIVATE ROUTE RESPONSE ***");
+            //Uses the collection above to find a compatible route for both nodes (without loops)
+            Set<String> additionalProviders = routingTable.additionalProviders(reunionOfContactedNodes);
+
+            //True if there are no additional routes that do not use the requester as provider
+            boolean noMoreRoutes = additionalProviders.size() == 0;
+
+            //Handles the activate route request received from a neighbour imediatelly
+            // after an activate route request has been sent to the same neighbour.
+            Boolean handledParallelProblem = handleSameNodeParallelSentReceivedRequest(neighbourName,
+                    noMoreRoutes, reunionOfContactedNodes, arReqFrame);
+            if(handledParallelProblem != null) return handledParallelProblem;
+
+            //If a neighbour requested the activation of a route (not the update), then a positive response can be given right away
+            // if there is any route active
+            if(neighbourName != null && !arReqFrame.updateRouteMode && routingTable.getActiveRoute() != null) {
+                sendActivateRouteResponse(List.of(neighbourName), true);
+                return true;
+            }
+
+            if(!activateRouteInCourse){
+                //Sets the flag to true, to avoid the repetition of this process, because of another request
+                activateRouteInCourse = true;
+
+                //If no more routes are available, then the node cannot activate a route
+                if(noMoreRoutes){
+                    //Removes from the requesters the nodes wanting the stream, since they should be warned with a recover route
+                    neighboursWantingStream.forEach(requesters::remove);
+
+                    //Sends response informing that the stream could not be activated
+                    sendActivateRouteResponse(requesters, false);
+
+                    //If a recover route was issued, and the node does not have any valid route, issues a
+                    if(recoverRoute) {
+                        sendRecoverRouteFrame(neighboursWantingStream);
+                        clearAllRequestVariables();
+                        recoverRoute = false;
+                        return true;
+                    }
+
+                    clearAllRequestVariables();
+                }else{
+                    if(neighbourName != null) requesters.add(neighbourName);
+                    contactedNodes = reunionOfContactedNodes;
+
+                    newRoute = routingTable.getBestRoute(contactedNodes);
+                    String newProvName = newRoute.snd;
+
+                    //Adds the name of the node to the route that the request travelled
+                    Set<String> newContacted = new HashSet<>(contactedNodes);
+                    newContacted.add(nodeName);
+
+                    //Requests the neighbour (next node in the new route) to activate it
+                    try { sendActivateRouteRequest(newProvName, routingTable.containsRoutes(newContacted), arReqFrame.updateRouteMode, newContacted); }
+                    catch (Exception e){
+                        //If an Exception occurred, there is some problem with the connection with the provider
+                        // this node is trying to contact. So the routes of that node are removed.
+                        routingTable.removeRoutes(newProvName);
+                        //Tries to activate a new route, when requesting to activate route fails
+                        logger.info("Activating the new route failed. Will try again.");
+                        activateRouteInCourse = false; //Necessary so a new iteration of activateBestRoute can happen
+                        activateRoute(new ActivateRouteRequestFrame(true));
+                    }
+                }
+
+                return true;
+            }else {
+                //If an activation is in course, sets the flag to true, so the routing handler
+                // is forced to wait for a response to proceed
+                waitForResponse = true;
+                return false;
+            }
         }
     }
 
     /**
-     * Recover Route should be called when the active route to the server is lost.
-     * @param neighbourName Provider of the stream. A neighbour that "died"
-     *                      or that could not recover a route to the server.
+     * @param neighbourName   Name of the neighbour that should receive the request
+     * @param noMoreRoutes    If the node does not have more routes other than the one he is sending the request to
+     * @param updateRouteMode Bool indicating if the active route request is ment to trigger a attempt of route update through the whole route
+     * @param contacted       Nodes that already have been contacted to ask a route
+     * @throws Exception If there is no connetion handler for the given neighbour,
+     *                   or if there was a problem sending the frame.
      */
-    private void handleRecoverRoute(String neighbourName){
+    private void sendActivateRouteRequest(String neighbourName, boolean noMoreRoutes, boolean updateRouteMode, Set<String> contacted) throws Exception{
+        lastNodeRequested = neighbourName;
+        TaggedConnection tc = neighbourTable.getConnectionHandler(neighbourName).getTaggedConnection();
+        tc.send(new ActivateRouteRequestFrame(neighbourName, noMoreRoutes, updateRouteMode, contacted).serialize());
+        logger.info("Sent activate route request to " + neighbourName + ". Contacted nodes: " + contacted);
+    }
 
-        logger.info("Checking if a recover route is needed because of " + neighbourName + "'s death.");
+    /**
+     * Handles the activate route request received from a neighbour imediatelly
+     * after an activate route request has been sent to the same neighbour.
+     * @return if null, then the activateRoute should not return.
+     * Otherwise, should return the given value.
+     */
+    private Boolean handleSameNodeParallelSentReceivedRequest(String neighbourName,
+                                                              boolean noMoreRoutes,
+                                                              Set<String> reunionOfContactedNodes,
+                                                              ActivateRouteRequestFrame arReqFrame){
+        //Supposed to handle a problem between two nodes, a 'null' neighbour is not valid
+        if(neighbourName == null) return null;
 
-        //Gets the current active route
-        Tuple<String, String> activeRoute = routingTable.getActiveRoute();
+        //If a request was sent to neighbour X and a response was received from neighbour X "simultaneously"
+        if(lastNodeRequested != null && lastNodeRequested.equals(neighbourName)){
 
-        //remove routes from the neighbour
-        routingTable.removeRoutes(neighbourName);
+            if(noMoreRoutes){
+                //If the neighbour does not have any additional routes that do not use this node as provider
+                if(arReqFrame.noMoreRoutes) {
+                    //Send negative answer because the activation of a route cannot be performed
+                    sendActivateRouteResponse(List.of(neighbourName), false);
+                    //Removes neighbour routes
+                    routingTable.removeRoutes(neighbourName);
+                    clearAllRequestVariables();
+                    //TODO - recovery mode
+                }
+                // [ELSE] the neighbour has additional routes then this node lets it handle the activation of the route
+                return true;
+            }
+            //If this node has additional routes
+            else {
+                //If the neighbour does not have any additional routes that do not use this node as provider
+                if(arReqFrame.noMoreRoutes) {
+                    //Since this node has additional routes, it will be the one handling the activation of a new route
+                    // and the neighbour is added to the nodes interested in knowing if
+                    // this node was able to activate a route
+                    requesters.add(neighbourName);
+                    //to avoid the activation of a incompatible route //TODO - N deve funcionar em todos os casos (se n der vai ser preciso fazer uma especie de stack(com o requester e os contacted nodes dele))
+                                                                      //TODO - como já foi feita a determinação de quem tem de iniciar, pode - se mandar o frame de volta para a queue, "usar um self activate"
+                                                                      // e ativar a flag "waitForResponse"
+                    contactedNodes = reunionOfContactedNodes;
+                    //unlocks the activation of a new route
+                    activateRouteInCourse = false;
+                }
+                else {
+                    //Since both have additional routes, any of them should be able to handle the request.
+                    // Calculates a value that allows to choose the one that should handle it.
+                    int compareTo = timestampLastARR.compareTo(arReqFrame.timestamp);
+                    if(compareTo == 0) compareTo = nodeName.compareTo(neighbourName);
 
-        //If the active route is no longer using the neighbour as provider,
-        // then there is nothing to do
-        if(activeRoute != null && !activeRoute.snd.equals(neighbourName)) {
-            logger.info("Recover route not needed because " + neighbourName + " is not the provider.");
-            return;
+                    //if the neighbour sent the request first
+                    if(compareTo > 0){
+                        //this node will be the one handling the request, so the neighbour is added to the nodes interested in knowing if
+                        // this node was able to activate a route
+                        requesters.add(neighbourName);
+                        //to avoid the activation of a incompatible route //TODO - N deve funcionar em todos os casos (ver TODO de cima)
+                        contactedNodes = reunionOfContactedNodes;
+                        //unlocks the activation of a new route
+                        activateRouteInCourse = false;
+                    }
+                    //If this node sent the request first
+                    else if (compareTo < 0) {
+                        //Discards the frame, since a response should come from the neighbour
+                        return true;
+                    }
+                    // (compareTo == 0) <=> impossible if the nodes have unique names
+                    else {
+                        sendActivateRouteResponse(List.of(neighbourName), false);
+                        return true;
+                    }
+                }
+            }
         }
-        //TODO - activateBestRoute deve remover rotas de quem nao consegue ativar, e quando nao tiver rotas enviar recover route frame se nao conseguir ativar nenhuma rota
 
-        //Activates best route
-        activateBestRouteActive = false;
-        activateBestRoute(null, null);
+        return null;
     }
 
+    /* ********* Activate Route Response ********* */
 
-    /* ******** Wait for route update ********* */
+    private void sendActivateRouteResponse(Collection<String> targets, boolean response){
+        logger.info("Sending activate route response (" + response + ") to " + targets);
+        for(String target : targets){
+            try {
+                TaggedConnection tc = neighbourTable.getConnectionHandler(target).getTaggedConnection();
+                tc.send(new ActivateRouteResponseFrame(target,response).serialize());
+                neighbourTable.updateWantsStream(target, response);
+            }catch (Exception ignored){
+                logger.warning("Could not send activate route response to " + target);
+                //If an Exception occurred, there is some problem with the connection with the provider
+                // this node is trying to contact. So the routes of that node are removed.
+                routingTable.removeRoutes(target);
+            }
+        }
+    }
 
-    private ReentrantLock routeUpdateLock = new ReentrantLock();
-    private Condition routeUpdateCond = routeUpdateLock.newCondition();
+    private void handleActivateRouteResponse(ActivateRouteResponseFrame arRespFrame){
+        String neighbourName = arRespFrame.neighbourName;
+        boolean response = arRespFrame.response;
 
-    public void waitForRouteUpdate() {
+        if(!neighbourName.equals(lastNodeRequested)){
+            logger.warning("Received an unexpected activate route response from " + neighbourName);
+            return;
+        }else {
+            waitForResponse = false; //If the expected response was received, unlocks otherFramesQueue
+
+            logger.info("Received activate route response (" + response + ") from " + neighbourName);
+
+            //If while waiting for a response the node itself became a server
+            if(clientTable.hasServers()){
+                //If the response was positive, then the route was activated
+                // and since it is no longer needed, a deactivate route frame is sent
+                if(response) sendDeactivateRoute(neighbourName);
+                routingTable.deactivateRoute(neighbourName);
+                sendActivateRouteResponse(requesters, response);
+                clearAllRequestVariables();
+            }else {
+                //If the response received was true, then the route can be activated
+                if (response) {
+                    //Deactivates the current route before activating the new one
+                    deactivateRoute(true, newRoute != null ? newRoute.snd : null);
+                    boolean success = routingTable.activateRoute(newRoute);
+
+                    if (success) {
+                        sendActivateRouteResponse(requesters, true);
+                        clearAllRequestVariables();
+                    } else {
+                        //This else case should not happen, since the provider should send a recover route.
+                        if (newRoute == null)
+                            logger.warning("Could not activate route. New route is null.");
+                        else
+                            logger.warning("Could not activate route to server " + newRoute.fst + " using " + newRoute.snd + "as provider.");
+                    }
+                } else {
+                    routingTable.removeRoutes(neighbourName);
+                    activateRouteInCourse = false;
+                    activateRoute(new ActivateRouteRequestFrame(true));
+                }
+            }
+        }
+    }
+
+    /* ********* Recover Route ********* */
+
+    private void sendRecoverRouteFrame(Collection<String> targets) {
+        logger.info("Sending recover route frame to " + targets);
+        for (String target : targets) {
+            try {
+                TaggedConnection taggedConnection = neighbourTable.getConnectionHandler(target).getTaggedConnection();
+                taggedConnection.send(new RecoverRouteFrame(target).serialize());
+                neighbourTable.updateWantsStream(target, false);
+                logger.info("Sent recover route frame to " + target);
+            } catch (Exception ignored) {
+                logger.warning("Could not send recover route frame to " + target);
+                //If an Exception occurred, there is some problem with the connection with the provider
+                // this node is trying to contact. So the routes of that node are removed.
+                routingTable.removeRoutes(target);
+            }
+        }
+    }
+
+    //TODO
+
+    /**
+     * Recover Route should be called when a connection with a neighbour was lost.
+     * This method is responsible to restore the normal state of the node.
+     * @param rrf Recover route frame. Contains the name of the neighbour node that "died",
+     *            or that could not recover a route to the server.
+     */
+    private void handleRecoverRoute(RecoverRouteFrame rrf){
+        String neighbourName = rrf.neighbourName;
+        //-> verificar se queria a stream, se queria, remove lo
+        //-> se era provider, remover rotas e ativar nova rota
+        //-> ter cuidado com o q acontece dos dois lados da stream
+
+        //If node wanted the stream, then marks it as someone who does not want the stream anymore,
+        // and deactivates the route if he was the only one wanting the stream
+        if(neighbourTable.wantsStream(neighbourName)){
+            logger.info("Marking " + neighbourName + " as someone who does not want the stream.");
+            neighbourTable.updateWantsStream(neighbourName, false);
+            deactivateRoute(true, null);
+        }
+
+        //If the node was the provider, then removes its routes, and
+        // tries to activate a new route.
+        //TODO - known issue - wont be able to recover route, if the only route available is through a neighbour wanting the stream.
+        Tuple<String,String> activeRoute = routingTable.getActiveRoute();
+        if(activeRoute != null && activeRoute.snd.equals(neighbourName)){
+            logger.info(neighbourName + " was a provider. Its routes will be deleted, and an attempt to discover a new route will be performed.");
+            routingTable.removeRoutes(neighbourName);
+            activateRouteInCourse = false;
+            activateRoute(new ActivateRouteRequestFrame(true));
+        }
+    }
+
+    /* ********* Deactivate Route ********* */
+
+    private void sendDeactivateRoute(String provider) {
+        logger.info("Sending deactivate route frame to " + provider);
         try {
-            routeUpdateLock.lock();
-            routeUpdateCond.await();
-            //System.out.println("\nAWAKED FROM ROUTE UPDATE: " + routingTable.getActiveRoute() + "\n");
-        } catch (InterruptedException ignored) {
-        } finally { routeUpdateLock.unlock(); }
+            TaggedConnection taggedConnection = neighbourTable.getConnectionHandler(provider).getTaggedConnection();
+            taggedConnection.send(new DeactivateRouteFrame(provider).serialize());
+        } catch (Exception ignored) {
+            logger.warning("Could not send deactivate route frame to " + provider);
+            //If an Exception occurred, there is some problem with the connection with the provider
+            // this node is trying to contact. So the routes of that node are removed.
+            routingTable.removeRoutes(provider);
+        }
     }
 
-    public void pushRoutingFrame(String neighbourName, Frame routingFrame){
-        routingFramesQueue.pushElem(new Tuple<>(neighbourName, routingFrame));
+    /**
+     * If there is a route active, then deactivates it. A combination of selfRequest == true e newProvider == null, forces the deactivation of the route.
+     * @param selfRequest If the request was made my the node itself. True means forcing the deactivation of the route.
+     * @param newProvider New provider of the stream. If the new provider of the stream is the same as the active one, the stream wont be deactivated.
+     */
+    private void deactivateRoute(boolean selfRequest, String newProvider) {
+        Tuple<String, String> activeRoute = routingTable.getActiveRoute();
+        if (activeRoute != null && (selfRequest || (!clientTable.hasClients()
+                && !neighbourTable.anyNeighbourWantsTheStream()))
+                && !activeRoute.snd.equals(newProvider)) {
+            routingTable.deactivateRoute(activeRoute.snd);
+            sendDeactivateRoute(activeRoute.snd);
+            logger.info("Route from provider " + activeRoute.snd + " deactivated!");
+        } else {
+            logger.info("Route, " + activeRoute + ", was not deactivated.");
+        }
+    }
+
+    /**
+     * Deactivates the route if the neighbour that sent the frame, was the only one wanting the stream.
+     * @param drf Deactivate route frame
+     */
+    private void handleDeactivateRoute(DeactivateRouteFrame drf){
+        String neighbourName = drf.neighbourName;
+
+        //Neighbour requested the deactivation, therefore it no longer wants the stream
+        if (neighbourName != null){
+            if(neighbourTable.wantsStream(neighbourName)) {
+                logger.info(neighbourName + " no longer wants the stream.");
+                neighbourTable.updateWantsStream(neighbourName, false);
+            }
+            else logger.warning("Received unexpected request to deactivate route from " + neighbourName);
+        }
+
+        //Requests the provider to deactivate the route,
+        // if the node does not have any clients attached and
+        // if there are no neighbours wanting the stream
+        deactivateRoute(false, null);
+    }
+
+    /* ********* Clear variables ********** */
+    private void clearLastRequestVariables(){
+        lastNodeRequested = null;
+        timestampLastARR = null;
+    }
+
+    private void clearActivateRouteRequestVariables(){
+        requesters.clear();
+        contactedNodes.clear();
+        activateRouteInCourse = false;
+    }
+
+    private void clearAllRequestVariables(){
+        clearLastRequestVariables();
+        clearActivateRouteRequestVariables();
+    }
+
+    /* ******* Calls from the outside ******* */
+
+    /**
+     * Converts the information given into a specialized frame.
+     * @param neighbourName Node that sent the frame.
+     * @param frame Frame
+     */
+    public void pushRoutingFrame(String neighbourName, Frame frame){
+        switch (frame.getTag()) {
+            case Tags.ACTIVATE_ROUTE -> {
+                insertIntoOtherFramesQueue(ActivateRouteRequestFrame.deserialize(neighbourName, frame));
+                logger.info("Received activate route request frame from " + neighbourName + ". Frame : " + frame);
+            }
+            case Tags.DEACTIVATE_ROUTE -> {
+                logger.info("Received deactivate route frame from " + neighbourName + ". Frame : " + frame);
+                insertIntoOtherFramesQueue(DeactivateRouteFrame.deserialize(neighbourName, frame));
+            }
+            case Tags.RESPONSE_ACTIVATE_ROUTE -> {
+                logger.info("Received activate route response frame from " + neighbourName + ". Frame : " + frame);
+                insertIntoResponseFramesQueue(ActivateRouteResponseFrame.deserialize(neighbourName, frame));
+            }
+            case Tags.RECOVER_ROUTE -> {
+                logger.info("Received recover route frame from " + neighbourName + ". Frame : " + frame);
+                insertIntoResponseFramesQueue(RecoverRouteFrame.deserialize(neighbourName, frame));
+            }
+        }
     }
 }

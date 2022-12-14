@@ -85,7 +85,7 @@ public class NeighbourEntry {
                 "ip='" + name + '\'' +
                 ", wantsStream=" + wantsStream +
                 ", timestamp=" + timestamp +
-                ", running=" + connectionHandler.isRunning() +
+                ", running=" + (connectionHandler != null && connectionHandler.isRunning()) +
                 '}';
     }
 }

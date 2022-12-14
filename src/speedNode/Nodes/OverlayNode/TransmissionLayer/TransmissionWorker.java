@@ -62,7 +62,7 @@ public class TransmissionWorker implements Runnable{
         while (!Thread.currentThread().isInterrupted()) {
 
             // Awaits for a datagram to be put on the queue
-            DatagramPacket input = inputQueue.popElem();
+            DatagramPacket input = inputQueue.pollElem();
             long init = System.nanoTime();
             /////// Start processing
 
@@ -98,7 +98,7 @@ public class TransmissionWorker implements Runnable{
 
                 newPackage = new RapidFTProtocol(initTimeSt,currTime,jumps+1, oldPacket.getPayload(),serverIP);
                 currTime = System.nanoTime();
-                if (i%20==0) System.out.println("TRANSMISSION: Recebi um pacote de " + ip + " com delay de " + (float) (currTime-initTimeSt)/1000000 + "ms");
+                //if (i%20==0) System.out.println("TRANSMISSION: Recebi um pacote de " + ip + " com delay de " + (float) (currTime-initTimeSt)/1000000 + "ms");
 
             }
 
@@ -109,7 +109,7 @@ public class TransmissionWorker implements Runnable{
                 // Send to all neighbours that want the packet
                 List<String> nodeList = neighbourTable.getNeighboursWantingStream();
                 List<String> clientList = this.clientTable.getAllClients();
-                if (i%20==0) System.out.println("Transmition: Processei um pacote em " + (float) (System.nanoTime() - init)/1000000+ " ms");
+                //if (i%20==0) System.out.println("Transmition: Processei um pacote em " + (float) (System.nanoTime() - init)/1000000+ " ms");
                 i++;
 
                 for (String nodeName : nodeList) {

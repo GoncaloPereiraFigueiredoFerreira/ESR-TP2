@@ -2,6 +2,7 @@ package speedNode.Nodes.OverlayNode.Tables;
 
 import speedNode.Utilities.Tuple;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -55,7 +56,7 @@ public interface IRoutingTable {
      * @return Returns true if the state was correctly updated
      */
     boolean activateRoute(String ServerIp, String provider);
-
+    boolean activateRoute(Tuple<String,String> route);
 
     void deactivateRoute();
 
@@ -68,8 +69,11 @@ public interface IRoutingTable {
     Tuple<Integer,Long> getMetrics(String ServerIp, String provider);
 
     Tuple<String,String> getActiveRoute();
-
     Tuple<String, String> activateBestRoute();
+
+    Tuple<String, String> activateBestRoute(Set<String> excluded);
+
+    Tuple<String, String> getBestRoute(Set<String> excluded);
 
     boolean existsInRoutingTable(String ServerIp,String provider);
 
@@ -79,7 +83,21 @@ public interface IRoutingTable {
 
     boolean checkDelay();
 
-    Tuple<String, String> activateBestRoute(Set<String> excluded);
-
     void removeRoutes(String neighbourname);
+
+    boolean containsRoutes();
+
+    /**
+     * Checks if there are routes that do not use the neighbours in the "excluded" collection as providers.
+     * @param excluded
+     * @return
+     */
+    boolean containsRoutes(Collection<String> excluded);
+
+    /**
+     * Gets all the providers that are not in the "excluded" collection
+     * @param excluded
+     * @return
+     */
+    Set<String> additionalProviders(Collection<String> excluded);
 }

@@ -14,7 +14,7 @@ public class RoutingTable implements IRoutingTable{
      *
      */
     private final HashMap<Tuple<String,String>, Tuple<Integer,Long>> metricsTable = new HashMap<>();
-    private final HashMap<Tuple<String,String>, Boolean> activeRoute = new HashMap<>();
+    private Tuple<String,String> activeRoute = null;
 
     /**
      *  IP of the providing neighbour | List of the servers that can be accessed by the neighbour
@@ -44,18 +44,15 @@ public class RoutingTable implements IRoutingTable{
             else{
                 try {
                     readWriteLockMetrics.writeLock().lock();
-                    readWriteLockActive.writeLock().lock();
 
                     if (this.providers.containsKey(Provider))
                         this.providers.get(Provider).add(ServerIp);
                     else this.providers.put(Provider,new ArrayList<>(Arrays.asList(ServerIp)));
 
                     this.metricsTable.put(temp,new Tuple<>(Jumps,Time));
-                    this.activeRoute.put(temp,active);
                     return true;
 
                 }finally {
-                    readWriteLockActive.writeLock().unlock();
                     readWriteLockMetrics.writeLock().unlock();
                 }
             }
@@ -81,30 +78,33 @@ public class RoutingTable implements IRoutingTable{
         }
     }
 
+    public boolean activateRoute(Tuple<String,String> route){
+        try {
+            readWriteLockMetrics.readLock().lock();
+            readWriteLockActive.writeLock().lock();
+            if (!this.metricsTable.containsKey(route))
+                return false;
+            else{
+                activeRoute = route;
+                return true;
+            }
+        }finally {
+            readWriteLockMetrics.readLock().unlock();
+            readWriteLockActive.writeLock().unlock();
+        }
+    }
+
     @Override
     public boolean activateRoute(String ServerIp, String Provider) {
         Tuple<String, String> temp = new Tuple<>(ServerIp, Provider);
-        try {
-            readWriteLockActive.writeLock().lock();
-            if (!this.activeRoute.containsKey(temp)) return false;
-            else{
-                Tuple<String,String> activeRoute = this.getActiveRoute();
-                this.activeRoute.replace(activeRoute,false);
-                this.activeRoute.replace(temp,true);
-                return true;
-            }
-
-        }finally {
-            readWriteLockActive.writeLock().unlock();
-        }
+        return activateRoute(temp);
     }
 
 
     public void deactivateRoute(){
         try{
             readWriteLockActive.writeLock().lock();
-            Tuple<String,String> activeRoute= this.getActiveRoute();
-            this.activeRoute.replace(activeRoute,false);
+            activeRoute = null;
         }finally {
             readWriteLockActive.writeLock().unlock();
         }
@@ -114,11 +114,8 @@ public class RoutingTable implements IRoutingTable{
     public void deactivateRoute(String provider){
         try{
             readWriteLockActive.writeLock().lock();
-            Tuple<String,String> activeRoute;
-            for (var route :this.activeRoute.keySet()){
-                if (route.snd.equals(provider))
-                    this.activeRoute.replace(route,false);
-            }
+            if(activeRoute != null && activeRoute.snd.equals(provider))
+                activeRoute = null;
         }finally {
             readWriteLockActive.writeLock().unlock();
         }
@@ -130,10 +127,7 @@ public class RoutingTable implements IRoutingTable{
         try{
             this.readWriteLockActive.readLock().lock();
             Tuple<String,String> t = new Tuple<>(ServerIp,Provider);
-            if (!this.activeRoute.containsKey(t)) return false;
-            else {
-                return this.activeRoute.get(t);
-            }
+            return t.equals(activeRoute);
         }finally {
             this.readWriteLockActive.readLock().unlock();
         }
@@ -156,11 +150,7 @@ public class RoutingTable implements IRoutingTable{
     public Tuple<String,String> getActiveRoute(){
         try{
             this.readWriteLockActive.readLock().lock();
-            Tuple<String,String> bestRoute = null;
-            for (Map.Entry<Tuple<String,String>,Boolean> entry : this.activeRoute.entrySet()) {
-                if (entry.getValue()) bestRoute = entry.getKey().clone();
-            }
-            return bestRoute;
+            return activeRoute;
         }finally {
             this.readWriteLockActive.readLock().unlock();
         }
@@ -194,16 +184,13 @@ public class RoutingTable implements IRoutingTable{
         }
     }
 
-
-
-    public Tuple<String, String> activateBestRoute(Set<String> excluded) {
+    public Tuple<String, String> getBestRoute(Set<String> excluded) {
         try{
-            this.readWriteLockMetrics.writeLock().lock();
+            this.readWriteLockMetrics.readLock().lock();
             float wiggleRoom = 0.15f; // todo - VALORIZAR MAIS OS SALTOS
             long score;
             long minScore = Long.MAX_VALUE;
             Tuple<String,String> bestRoute =null;
-
 
             for (Map.Entry<Tuple<String,String>,Tuple<Integer,Long>> entry : this.metricsTable.entrySet()){
                 if (!excluded.contains(entry.getKey().snd) ) { // if neighbour isn't excluded from being the best route
@@ -217,8 +204,21 @@ public class RoutingTable implements IRoutingTable{
                 }
             }
 
-            if(bestRoute != null && activateRoute(bestRoute.fst,bestRoute.snd))
+            if(bestRoute != null)
                 return bestRoute.clone();
+            else
+                return null;
+        }finally {
+            this.readWriteLockMetrics.readLock().unlock();
+        }
+    }
+
+    public Tuple<String, String> activateBestRoute(Set<String> excluded) {
+        try{
+            this.readWriteLockMetrics.writeLock().lock();
+            Tuple<String, String> bestRoute = getBestRoute(excluded);
+            if(bestRoute != null && activateRoute(bestRoute.fst,bestRoute.snd))
+                return bestRoute;
             else
                 return null;
         }finally {
@@ -258,9 +258,11 @@ public class RoutingTable implements IRoutingTable{
             for(var metricsEntry : metricsTable.entrySet()) {
                 var tupleNodes = metricsEntry.getKey();
                 var tupleMetrics = metricsEntry.getValue();
-                System.out.println("\tserver: " + tupleNodes.fst + " | neighbour: " + tupleNodes.snd + " | jumps: " + tupleMetrics.fst + " | time: " + tupleMetrics.snd + " | active: " + activeRoute.get(tupleNodes));
+                System.out.println("\tserver: " + tupleNodes.fst + " | neighbour: " + tupleNodes.snd + " | jumps: " + tupleMetrics.fst + " | time: " + tupleMetrics.snd);
             }
             System.out.println("}\n");
+
+            System.out.println("Active Route: " + activeRoute);
 
             System.out.println("\n**********************************\n\n");
         }finally {
@@ -366,9 +368,9 @@ public class RoutingTable implements IRoutingTable{
             for (Tuple<String,String> key : new ArrayList<>(this.metricsTable.keySet())){
                 if(key.snd.equals(neighbourName)) this.metricsTable.remove(key);
             }
-            for (Tuple<String,String> key : new ArrayList<>(this.activeRoute.keySet())) {
-                if(key.snd.equals(neighbourName)) this.activeRoute.remove(key);
-            }
+
+            if(activeRoute != null && activeRoute.snd.equals(neighbourName))
+                activeRoute = null;
 
             this.providers.remove(neighbourName);
         }finally {
@@ -378,4 +380,37 @@ public class RoutingTable implements IRoutingTable{
         }
     }
 
+    public boolean containsRoutes(){
+        try{
+            this.readWriteLockMetrics.readLock().lock();
+            return this.metricsTable.size() != 0;
+        }finally {
+            this.readWriteLockMetrics.readLock().unlock();
+        }
+    }
+
+    public boolean containsRoutes(Collection<String> excluded){
+        try{
+            this.readWriteLockMetrics.readLock().lock();
+            for(var entry : metricsTable.keySet())
+                if(!excluded.contains(entry.snd))
+                    return true;
+            return false;
+        }finally {
+            this.readWriteLockMetrics.readLock().unlock();
+        }
+    }
+
+    public Set<String> additionalProviders(Collection<String> excluded){
+        try{
+            Set<String> set = new HashSet<>();
+            this.readWriteLockMetrics.readLock().lock();
+            for(var entry : metricsTable.keySet())
+                if(!excluded.contains(entry.snd))
+                    set.add(entry.snd);
+            return set;
+        }finally {
+            this.readWriteLockMetrics.readLock().unlock();
+        }
+    }
 }
