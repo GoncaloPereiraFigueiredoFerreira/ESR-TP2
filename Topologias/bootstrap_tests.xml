@@ -1,0 +1,53 @@
+<overlay>
+    <node name="N1">
+        <interface ip="10.0.11.1"/>
+        <interface ip="10.0.1.1"/>
+        <interface ip="10.0.10.2"/>
+        <neighbour name="N2"/>
+        <neighbour name="N3"/>
+        <neighbour name="N7"/>
+    </node>
+    <node name="N2">
+        <interface ip="10.0.1.2"/>
+        <interface ip="10.0.2.1"/>
+        <neighbour name="N1"/>
+        <neighbour name="N4"/>
+    </node>
+    <node name="N3">
+        <interface ip="10.0.11.2"/>
+        <interface ip="10.0.12.1"/>
+        <neighbour name="N1"/>
+        <neighbour name="N5"/>
+    </node>
+    <node name="N4">
+        <interface ip="10.0.2.2"/>
+        <interface ip="10.0.5.1"/>
+        <neighbour name="N2"/>
+        <neighbour name="N6"/>
+    </node>
+    <node name="N5">
+        <interface ip="10.0.12.2"/>
+        <interface ip="10.0.8.1"/>
+        <interface ip="10.0.7.2"/>
+        <neighbour name="N3"/>
+        <neighbour name="N6"/>
+        <neighbour name="N7"/>
+    </node>
+    <node name="N6">
+        <interface ip="10.0.5.2"/>
+        <interface ip="10.0.14.2"/>
+        <interface ip="10.0.7.1"/>
+        <neighbour name="N4"/>
+        <neighbour name="N5"/>
+        <neighbour name="N7"/>
+    </node>
+    <node name="N7">
+        <interface ip="10.0.10.1"/>
+        <interface ip="10.0.8.2"/>
+        <interface ip="10.0.14.1"/>
+        <neighbour name="N1"/>
+        <neighbour name="N5"/>
+        <neighbour name="N6"/>
+    </node>
+
+</overlay>
