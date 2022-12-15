@@ -129,7 +129,6 @@ public class FloodControl {
         else if (currentIndex < floodIndex || (currentIndex == Integer.MAX_VALUE && floodIndex != currentIndex)) {
             floodIndexes.put(server, floodIndex);
             floodSent.get(server).clear();
-            System.out.println("Routes from Previous floods:" + routesFromPreviousFloods);
             deleteUnusedRoutes(server);
             return floodIndex;
         }
@@ -147,7 +146,6 @@ public class FloodControl {
         }
 
         //Get used routes from server
-        System.out.println("DeleteUnused: routes to server: " + routingTable.getRoutesToServer(server));
         routesFromPreviousFloods.addAll(routingTable.getRoutesToServer(server));
     }
 
