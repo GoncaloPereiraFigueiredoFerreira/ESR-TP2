@@ -1,10 +1,10 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
+import speedNode.Nodes.OverlayNode.Tables.IRoutingTable;
 import speedNode.Utilities.Tuple;
 
 import java.io.*;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -12,6 +12,16 @@ public class FloodControl {
     private final Map<String, Set<String>> floodSent = new HashMap<>(); //Neighbours that received the flood frame
     private final Map<String,Integer> floodIndexes = new HashMap<>(); //Index of the last flood for each server
     private final ReentrantLock lock = new ReentrantLock();
+    private final Set<Tuple<String,String>> routesFromPreviousFloods = new HashSet<>();
+    private final IRoutingTable routingTable;
+
+    public FloodControl(IRoutingTable routingTable) {
+        this.routingTable = routingTable;
+    }
+
+    //Routing table needed methods:
+    //  -> get routes from specific server
+    //  -> delete specific route
 
     /**
      * @param server IP of the server that started the flood
@@ -45,12 +55,16 @@ public class FloodControl {
      * @param index Received flood index of the server
      * @return "true" if the flood index of the frame received is valid. Otherwise, "false".
      */
-    public boolean validateFlood(String server, int index){
+    public boolean validateFlood(String server, String neighbour, int index){
         try {
             lock.lock();
             Integer currentIndex = updateFloodVars(server, index);
+            if(currentIndex == index) {
+                routesFromPreviousFloods.remove(new Tuple<>(server, neighbour));
+                return true;
+            }
             //If the current index is not the same as the index given, the changes are rejected
-            return currentIndex == index;
+            return false;
         }finally { lock.unlock(); }
     }
 
@@ -115,12 +129,27 @@ public class FloodControl {
         else if (currentIndex < floodIndex || (currentIndex == Integer.MAX_VALUE && floodIndex != currentIndex)) {
             floodIndexes.put(server, floodIndex);
             floodSent.get(server).clear();
+            System.out.println("Routes from Previous floods:" + routesFromPreviousFloods);
+            deleteUnusedRoutes(server);
             return floodIndex;
         }
 
         return currentIndex;
     }
 
+    private void deleteUnusedRoutes(String server){
+        //Remove unused routes from the server
+        for(var route : routesFromPreviousFloods){
+            if(route.fst.equals(server)) {
+                routingTable.removeSpecificRoute(route);
+                routesFromPreviousFloods.remove(route);
+            }
+        }
+
+        //Get used routes from server
+        System.out.println("DeleteUnused: routes to server: " + routingTable.getRoutesToServer(server));
+        routesFromPreviousFloods.addAll(routingTable.getRoutesToServer(server));
+    }
 
     public static class FloodInfo{
         public String server;

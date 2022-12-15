@@ -48,7 +48,7 @@ public class ControlWorker implements Runnable{
     private final Set<Thread> threads = new HashSet<>();
 
     // To keep track of the neighbours that were sent the flood msg
-    private final FloodControl floodControl = new FloodControl();
+    private final FloodControl floodControl;
 
     private RoutingHandler routingHandler;
 
@@ -68,6 +68,7 @@ public class ControlWorker implements Runnable{
     public ControlWorker(String bootstrapIP, INeighbourTable neighbourTable, IRoutingTable routingTable, IClientTable clientTable){
         this.neighbourTable = neighbourTable;
         this.routingTable = routingTable;
+        this.floodControl = new FloodControl(routingTable);
         this.clientTable = clientTable;
         this.bootstrapIP = bootstrapIP;
     }
@@ -530,7 +531,7 @@ public class ControlWorker implements Runnable{
 
         //Registering the node that sent the frame, in order to avoid spreading the flood back to the node it came from
         int floodIndex = frame.getNumber();
-        boolean validFlood = floodControl.validateFlood(floodInfo.server, floodIndex);
+        boolean validFlood = floodControl.validateFlood(floodInfo.server, neighbourName, floodIndex);
 
         if(validFlood) {
             //Get nodes that already got the flood frame

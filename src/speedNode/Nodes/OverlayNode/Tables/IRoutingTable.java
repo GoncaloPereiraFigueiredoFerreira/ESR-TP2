@@ -100,4 +100,8 @@ public interface IRoutingTable {
      * @return
      */
     Set<String> additionalProviders(Collection<String> excluded);
+
+    void removeSpecificRoute(Tuple<String, String> route);
+
+    Set<Tuple<String, String>> getRoutesToServer(String server);
 }

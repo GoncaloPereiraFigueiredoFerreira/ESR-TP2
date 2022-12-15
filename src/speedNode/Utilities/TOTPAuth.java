@@ -22,8 +22,6 @@ public class TOTPAuth {
 
     public byte[] encryptMessage() {
         long seconds = System.currentTimeMillis()/1000;
-        System.out.println("Seconds: "+seconds);
-        System.out.println("Encrypted: " + Arrays.toString(md.digest(returnTOTP(seconds))));
         return md.digest(returnTOTP(seconds));
     }
 

@@ -413,4 +413,33 @@ public class RoutingTable implements IRoutingTable{
             this.readWriteLockMetrics.readLock().unlock();
         }
     }
+
+    @Override
+    public void removeSpecificRoute(Tuple<String, String> route) {
+        try{
+            readWriteLockMetrics.writeLock().lock();
+            readWriteLockActive.writeLock().lock();
+            metricsTable.remove(route);
+            if(route != null && route.equals(activeRoute))
+                activeRoute = null;
+        }finally {
+            readWriteLockMetrics.writeLock().unlock();
+            readWriteLockActive.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public Set<Tuple<String, String>> getRoutesToServer(String server) {
+        Set<Tuple<String,String>> set = new HashSet<>();
+        try{
+            readWriteLockMetrics.readLock().lock();
+            for(var route : metricsTable.keySet()){
+                if(route.fst.equals(server))
+                    set.add(route.clone());
+            }
+        }finally {
+            readWriteLockMetrics.readLock().unlock();
+        }
+        return set;
+    }
 }
