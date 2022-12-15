@@ -352,6 +352,7 @@ public class RoutingHandler implements Runnable {
                     //If this node sent the request first
                     else if (compareTo < 0) {
                         //Discards the frame, since a response should come from the neighbour
+                        lastNodeRequested = neighbourName;
                         return true;
                     }
                     // (compareTo == 0) <=> impossible if the nodes have unique names
@@ -476,6 +477,7 @@ public class RoutingHandler implements Runnable {
         //TODO - known issue - wont be able to recover route, if the only route available is through a neighbour wanting the stream.
         Tuple<String,String> activeRoute = routingTable.getActiveRoute();
         if(activeRoute != null && activeRoute.snd.equals(neighbourName)){
+            recoverRoute = true;
             logger.info(neighbourName + " was a provider. Its routes will be deleted, and an attempt to discover a new route will be performed.");
             routingTable.removeRoutes(neighbourName);
             activateRouteInCourse = false;
@@ -566,18 +568,18 @@ public class RoutingHandler implements Runnable {
         switch (frame.getTag()) {
             case Tags.ACTIVATE_ROUTE -> {
                 insertIntoOtherFramesQueue(ActivateRouteRequestFrame.deserialize(neighbourName, frame));
-                logger.info("Received activate route request frame from " + neighbourName + ". Frame : " + frame);
+                logger.info("Received activate route request frame from " + neighbourName);
             }
             case Tags.DEACTIVATE_ROUTE -> {
-                logger.info("Received deactivate route frame from " + neighbourName + ". Frame : " + frame);
+                logger.info("Received deactivate route frame from " + neighbourName);
                 insertIntoOtherFramesQueue(DeactivateRouteFrame.deserialize(neighbourName, frame));
             }
             case Tags.RESPONSE_ACTIVATE_ROUTE -> {
-                logger.info("Received activate route response frame from " + neighbourName + ". Frame : " + frame);
+                logger.info("Received activate route response frame from " + neighbourName);
                 insertIntoResponseFramesQueue(ActivateRouteResponseFrame.deserialize(neighbourName, frame));
             }
             case Tags.RECOVER_ROUTE -> {
-                logger.info("Received recover route frame from " + neighbourName + ". Frame : " + frame);
+                logger.info("Received recover route frame from " + neighbourName);
                 insertIntoResponseFramesQueue(RecoverRouteFrame.deserialize(neighbourName, frame));
             }
         }

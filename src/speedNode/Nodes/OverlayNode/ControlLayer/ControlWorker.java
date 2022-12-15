@@ -557,6 +557,10 @@ public class ControlWorker implements Runnable{
                 routingTable.addServerPath(floodInfo.server, neighbourName, floodInfo.jumps, System.nanoTime() - floodInfo.timestamp, false);
             else
                 routingTable.updateMetrics(floodInfo.server, neighbourName, floodInfo.jumps, System.nanoTime() - floodInfo.timestamp);
+
+            if((clientTable.hasClients() || neighbourTable.anyNeighbourWantsTheStream()) && routingTable.getActiveRoute() == null){
+                routingHandler.pushRoutingFrame(null,new ActivateRouteRequestFrame(false).serialize());
+            }
         }
     }
 
