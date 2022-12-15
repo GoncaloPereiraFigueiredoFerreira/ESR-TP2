@@ -76,7 +76,7 @@ public class ControlWorker implements Runnable{
     public void run() {
         try{
             //Creates logger
-            this.logger = MyLogger.createLogger(UUID.randomUUID().toString(), "---", null, true);
+            this.logger = MyLogger.createLogger(UUID.randomUUID().toString(), "---", null, false);
             logger.info("Running...");
 
             // ************** DEBUG
@@ -92,7 +92,7 @@ public class ControlWorker implements Runnable{
                             case "q" -> {System.out.println("[" + nodeName + "]\n "); if(routingHandler != null) routingHandler.printQueues(); else
                                 System.out.println("Routing handler is nulll");}
                             case "f" -> {
-                                if ( clientTable.hasServers() && System.currentTimeMillis() - this.floodTimeStamp > 30*1000) {
+                                if ( clientTable.hasServers()) {
                                     List<String> Servers = clientTable.getAllServers();
                                     for (String server : Servers)
                                         startFlood(server);
@@ -526,7 +526,7 @@ public class ControlWorker implements Runnable{
         FloodControl.FloodInfo floodInfo = FloodControl.FloodInfo.deserialize(frame.getData());
 
         //Ignores own flood frame
-        if(clientTable.containsServer(floodInfo.server) || floodInfo.route.contains(nodeName)) return;
+        if(floodInfo.route.contains(nodeName) || clientTable.hasServers()) return;
 
         //Registering the node that sent the frame, in order to avoid spreading the flood back to the node it came from
         int floodIndex = frame.getNumber();

@@ -282,7 +282,7 @@ public class RoutingTable implements IRoutingTable{
                 var metrics = this.metricsTable.get(new Tuple<>(serverIp, provider));
 
                 var diff = newTime - metrics.snd;
-                var margin = metrics.snd * 0.5;
+                var margin = (Math.log(metrics.snd*0.000001+1)/Math.log(1.096))*1000000; //metrics.snd * 0.5;
                 packetCounter++;
 
                 //TODO - criar funcao para calcular margem

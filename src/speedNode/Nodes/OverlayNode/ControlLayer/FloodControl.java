@@ -1,5 +1,7 @@
 package speedNode.Nodes.OverlayNode.ControlLayer;
 
+import speedNode.Utilities.Tuple;
+
 import java.io.*;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -8,7 +10,6 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class FloodControl {
     private final Map<String, Set<String>> floodSent = new HashMap<>(); //Neighbours that received the flood frame
-    private final Map<String, Set<String>> floodReceived = new HashMap<>(); //Neighbours from which the flood frame was received
     private final Map<String,Integer> floodIndexes = new HashMap<>(); //Index of the last flood for each server
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -107,14 +108,12 @@ public class FloodControl {
         //If a flood has not been received from the server given as parameter, then an index and the required sets are created
         if (currentIndex == null) {
             floodIndexes.put(server, floodIndex);
-            floodReceived.put(server, new HashSet<>());
             floodSent.put(server, new HashSet<>());
             return floodIndex;
         }
         //If the new index is valid, then it is saved, and the sets associated to the server are cleared
         else if (currentIndex < floodIndex || (currentIndex == Integer.MAX_VALUE && floodIndex != currentIndex)) {
             floodIndexes.put(server, floodIndex);
-            floodReceived.get(server).clear();
             floodSent.get(server).clear();
             return floodIndex;
         }
