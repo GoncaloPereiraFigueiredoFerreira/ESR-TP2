@@ -315,6 +315,7 @@ public class RoutingHandler implements Runnable {
                     //TODO - recovery mode
                 }
                 // [ELSE] the neighbour has additional routes then this node lets it handle the activation of the route
+                else lastNodeRequested = neighbourName;
                 return true;
             }
             //If this node has additional routes
